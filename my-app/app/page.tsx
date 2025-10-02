@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "react-oidc-context";
 import Form from 'react-bootstrap/Form';
 
-function SelectBasicExample({ IMEI ,value, setValue}) {
+function SelectBasicExample({ IMEI , setValue}) {
   const handleSelect=(e)=>{
     if(e.target.value){
       console.log(e.target.value);
@@ -22,21 +22,22 @@ function SelectBasicExample({ IMEI ,value, setValue}) {
     </Form.Select>
   );
 }
-function dropboxDev({ IMEI ,value, setValue}) {
+function DropboxDev({ devicearr, setcurrdev}) {
   const handleSelect=(e)=>{
     if(e.target.value){
       console.log(e.target.value);
-      setValue(e.target.value)
+      console.log("set dev:", devicearr[e.target.value]);
+      setcurrdev(devicearr[e.target.value]);
     }
   }
   return (
     <Form.Select aria-label="Default select example" onChange={handleSelect}>
-      <option value="">Choose your IMEI code</option>
-       {IMEI.map((opt, index) => (
-          <option key={index} value={opt}>
-            {opt}
-          </option>
-        ))}
+      <option value="">Choose your Device</option>
+      {Object.entries(devicearr).map(([key, value]) => (
+        <option key={key} value={key}>
+          {value}
+        </option>
+      ))}
     </Form.Select>
   );
 }
@@ -111,9 +112,11 @@ function App() {
         for (const item of temp) {
           dev[idx] = item.DeviceType;
           map[item.DeviceType] = item;
+          idx++;
         }
         setDeviceMap(map);
         setDeviceType(dev);
+        console.log("dev arr:",dev);
         // do something with data here
       })
       .catch(err => console.error("Fetch error:", err));
@@ -135,14 +138,14 @@ function App() {
   if (auth.isAuthenticated) {
     return (
       <div>
-        <SelectBasicExample IMEI = {IMEI_ARR} value={IMEI} setValue={setIMEI}/>
-        {/* <SelectBasicExample IMEI = {deviceType} value={device} setValue={setDevice}/> */}
+        <SelectBasicExample IMEI = {IMEI_ARR} setValue={setIMEI}/>
+        <DropboxDev devicearr = {deviceType} setcurrdev={setDevice}/>
         {/* <pre> Hello: {auth.user?.profile.email} </pre> */}
         <pre> Welcome {userInfo.username}!!</pre>
         <pre> ID Token: {auth.user?.id_token} </pre>
         <pre> Access Token: {auth.user?.access_token} </pre>
         <pre> Refresh Token: {auth.user?.refresh_token} </pre>
-        <pre>{JSON.stringify(deviceMap["Voltage1"], null, 2)}</pre>
+        <pre>{JSON.stringify(deviceMap[device], null, 2)}</pre>
         <button onClick={getLatestDp}>Refresh</button>
         <button onClick={() => auth.removeUser()}>Sign out</button>
       </div>
