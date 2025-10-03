@@ -7,6 +7,8 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 import DateTimeRangePickerValue from "./datepicker";
+
+import dayjs from "dayjs";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale);
 function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
   const handleSelect=(e)=>{
@@ -147,7 +149,8 @@ const options = {
       title: {
         display: true,
         text: 'Timestamp'
-      }
+      },
+      
     },
     y: {
       title: {
@@ -243,6 +246,7 @@ const options = {
         const temp = JSON.parse(data.body);
         setDeviceType(temp.deviceTypes || []);
         setTimeSeriesData(temp.items || []);
+        console.log("time series:",temp.items || []);
         // const map = {};
         // const dev = {};
         // let idx = 0;
@@ -267,8 +271,8 @@ const options = {
     const deviceData = timeSeriesData.filter(item => item.DeviceType === device);
     const points = deviceData
       .filter(item => typeof item[dataType] === 'number')
-      .map(item => ({ x: new Date(item.Timestamp), y: item[dataType] }));
-
+      .map(item => ({ x: item.Timestamp.split(".")[0].replace("T", " "), y: item[dataType] }));
+    console.log("points:",points);
     return {
       datasets: [
         {
@@ -315,7 +319,7 @@ const options = {
         <button onClick={() => auth.removeUser()}>Sign out</button>
         <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime}/>
         {chartData.datasets.length > 0 && (
-          <div style={{ marginTop: '20px' }}>
+          <div style={{ marginTop: '20px'  ,width:'50%'}}>
             <h3>Time Series Chart: {device} - {dataType}</h3>
             <Line data={chartData} options={options} />
           </div>
