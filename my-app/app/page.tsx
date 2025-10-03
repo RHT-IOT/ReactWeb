@@ -41,12 +41,42 @@ function DropboxDev({ devicearr, setcurrdev}) {
     </Form.Select>
   );
 }
+
+function Table_disp({deviceMap, device}){
+  if(!deviceMap || !device){
+    return(
+        <pre> No data Yet </pre>
+    );
+  }
+  const timestamp = deviceMap[device]["Timestamp"].split(".")[0].replace("T", " ");
+  return(<table border="1" style={{ borderCollapse: "collapse", width: "60%" }}>
+    <thead>
+      <tr>
+        <th>Variable</th>
+        <th>Value</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+      {Object.entries(deviceMap[device]).filter(([key]) => (key !== "Timestamp")).filter(([key]) => (key !== "DeviceID")).filter(([key]) => (key !== "DeviceType")).map(([key, value]) => (
+        <tr key={key}>
+          <td>{key}</td>
+          <td>{String(value)}</td>
+          <td>{timestamp}</td>
+        </tr>
+      ))}
+       
+    </tbody>
+  </table>);
+}
 function App() {
   const auth = useAuth();
   const [userInfo, setUserInfo] = useState({ username: "" , name: ""});
   const [IMEI_ARR, setIMEI_ARR] = useState([]);
   const [IMEI,setIMEI]=useState('');
   const [deviceMap, setDeviceMap]=useState('');
+  const [timestamp, setTimestamp]=useState('');
   const [deviceType, setDeviceType]=useState('');
   const [device, setDevice]=useState('');
 
@@ -140,13 +170,14 @@ function App() {
       <div>
         <SelectBasicExample IMEI = {IMEI_ARR} setValue={setIMEI}/>
         <DropboxDev devicearr = {deviceType} setcurrdev={setDevice}/>
+        <button onClick={getLatestDp}>Refresh</button>
         {/* <pre> Hello: {auth.user?.profile.email} </pre> */}
         <pre> Welcome {userInfo.username}!!</pre>
         <pre> ID Token: {auth.user?.id_token} </pre>
         <pre> Access Token: {auth.user?.access_token} </pre>
         <pre> Refresh Token: {auth.user?.refresh_token} </pre>
-        <pre>{JSON.stringify(deviceMap[device], null, 2)}</pre>
-        <button onClick={getLatestDp}>Refresh</button>
+        {/* <pre>{JSON.stringify(deviceMap[device], null, 2)}</pre> */}
+        <Table_disp deviceMap = {deviceMap} device = {device}/>
         <button onClick={() => auth.removeUser()}>Sign out</button>
       </div>
     );
