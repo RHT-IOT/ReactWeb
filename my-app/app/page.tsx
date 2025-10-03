@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "react-oidc-context";
 import Form from 'react-bootstrap/Form';
-
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
+import { Line } from 'react-chartjs-2';
+import DateTimeRangePickerValue from "./datepicker";
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
   const handleSelect=(e)=>{
     if(e.target.value){
@@ -88,7 +91,32 @@ function App() {
   const [timestamp, setTimestamp]=useState('');
   const [deviceType, setDeviceType]=useState('');
   const [device, setDevice]=useState('');
+  const [startDateTime, setStartDateTime]=useState('');
+  const [endDateTime, setEndDateTime]=useState('');
+const data = {
+  datasets: [
+    {
+      label: 'Sensor Data',
+      data: [
+        { x: '2025-10-03 10:00:00', y: 65 },
+        { x: '2025-10-03 10:05:00', y: 59 },
+        { x: '2025-10-03 10:10:00', y: 80 },
+      ],
+      borderColor: 'rgb(75, 192, 192)',
+    },
+  ],
+};
 
+
+const options = {
+  responsive: true,
+  plugins: {
+    title: {
+      display: true,
+      text: 'My Chart Title',
+    },
+  },
+};
   useEffect(() => {
     const fetchUserInfo = async () => {
 
@@ -160,6 +188,35 @@ function App() {
       })
       .catch(err => console.error("Fetch error:", err));
   };
+  const getDpfromtime = () => {
+    return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getDpFromTime", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${auth.user?.id_token}`,
+      },
+      body: JSON.stringify({ IMEI, startDateTime,endDateTime}),
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log("API response:", data);
+        const temp = JSON.parse(data.body);
+        setDeviceType(temp.deviceTypes || []);
+        // const map = {};
+        // const dev = {};
+        // let idx = 0;
+        // for (const item of temp) {
+        //   dev[idx] = item.DeviceType;
+        //   map[item.DeviceType] = item;
+        //   idx++;
+        // }
+        // setDeviceMap(map);
+        // setDeviceType(dev);
+        // console.log("dev arr:",dev);
+        // do something with data here
+      })
+      .catch(err => console.error("Fetch error:", err));
+  };
   const signOutRedirect = () => {
     const clientId = "7bj6qolgca3bbcshiuiinp9tj4";
     const logoutUri = "<logout uri>";
@@ -180,7 +237,8 @@ function App() {
         <SelectBasicExample IMEI = {IMEI_ARR} setValue={setIMEI} setcurrdev = {setDevice} setdevarr = {setDeviceType}/>
         <DropboxDev devicearr = {deviceType} setcurrdev={setDevice}/>
         <button onClick={getLatestDp}>Refresh</button>
-        {/* <pre> Hello: {auth.user?.profile.email} </pre> */}
+        <button onClick={getDpfromtime}>manyDP</button>
+        <pre>time{startDateTime}{endDateTime} </pre>
         <h1> Welcome {userInfo.username}!!</h1>
         {/* <pre> ID Token: {auth.user?.id_token} </pre>
         <pre> Access Token: {auth.user?.access_token} </pre>
@@ -188,6 +246,8 @@ function App() {
         {/* <pre>{JSON.stringify(deviceMap[device], null, 2)}</pre> */}
         <Table_disp deviceMap = {deviceMap} device = {device}/>
         <button onClick={() => auth.removeUser()}>Sign out</button>
+        <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime}/>
+        <Line data={data} options={options} />;
       </div>
     );
   }
