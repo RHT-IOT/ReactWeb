@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { useAuth } from "react-oidc-context";
 import Form from 'react-bootstrap/Form';
 
-function SelectBasicExample({ IMEI , setValue}) {
+function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
   const handleSelect=(e)=>{
     if(e.target.value){
       console.log(e.target.value);
       setValue(e.target.value)
+      setcurrdev("");
+      setdevarr("");
     }
   }
   return (
@@ -23,6 +25,12 @@ function SelectBasicExample({ IMEI , setValue}) {
   );
 }
 function DropboxDev({ devicearr, setcurrdev}) {
+  if(!devicearr){
+
+  return (
+    <p>click refresh</p>
+  );
+  }
   const handleSelect=(e)=>{
     if(e.target.value){
       console.log(e.target.value);
@@ -31,6 +39,7 @@ function DropboxDev({ devicearr, setcurrdev}) {
     }
   }
   return (
+    
     <Form.Select aria-label="Default select example" onChange={handleSelect}>
       <option value="">Choose your Device</option>
       {Object.entries(devicearr).map(([key, value]) => (
@@ -168,14 +177,14 @@ function App() {
   if (auth.isAuthenticated) {
     return (
       <div>
-        <SelectBasicExample IMEI = {IMEI_ARR} setValue={setIMEI}/>
+        <SelectBasicExample IMEI = {IMEI_ARR} setValue={setIMEI} setcurrdev = {setDevice} setdevarr = {setDeviceType}/>
         <DropboxDev devicearr = {deviceType} setcurrdev={setDevice}/>
         <button onClick={getLatestDp}>Refresh</button>
         {/* <pre> Hello: {auth.user?.profile.email} </pre> */}
-        <pre> Welcome {userInfo.username}!!</pre>
-        <pre> ID Token: {auth.user?.id_token} </pre>
+        <h1> Welcome {userInfo.username}!!</h1>
+        {/* <pre> ID Token: {auth.user?.id_token} </pre>
         <pre> Access Token: {auth.user?.access_token} </pre>
-        <pre> Refresh Token: {auth.user?.refresh_token} </pre>
+        <pre> Refresh Token: {auth.user?.refresh_token} </pre> */}
         {/* <pre>{JSON.stringify(deviceMap[device], null, 2)}</pre> */}
         <Table_disp deviceMap = {deviceMap} device = {device}/>
         <button onClick={() => auth.removeUser()}>Sign out</button>
