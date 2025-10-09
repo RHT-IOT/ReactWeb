@@ -173,7 +173,7 @@ const ExportCSVButton = ({ data, filename = "export.csv" }) => {
     document.body.removeChild(link);
   };
 
-  return <button className="brand-button" onClick={downloadCSV} style={{ marginTop: 8 }}>Download CSV</button>;
+  return <button className="brand-button" onClick={downloadCSV}>Download CSV</button>;
 };
 
 function App() {
@@ -193,6 +193,8 @@ function App() {
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-a');
   const [logoSrc, setLogoSrc] = useState('/logos/logo1.png');
   const [mode, setMode] = useState<'mode-light' | 'mode-dark'>('mode-light');
+  // Dynamic brand title per theme
+  const brandTitle = theme === 'theme-a' ? 'RHT Limited' : theme === 'theme-b' ? 'CMA testing' : 'Natsense';
 const options = {
   responsive: true,
   plugins: {
@@ -389,11 +391,11 @@ const options = {
   const chartData = prepareChartData();
   const signOutRedirect = () => {
     const clientId = "7bj6qolgca3bbcshiuiinp9tj4";
-    const logoutUri = "<logout uri>";
+    const logoutUri = window.location.origin;
     const cognitoDomain = "https://ap-southeast-2d19wijvbp.auth.ap-southeast-2.amazoncognito.com";
+    try { (auth as any)?.removeUser?.(); } catch {}
     window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
   };
-  https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test
   if (auth.isLoading) {
     return <div>Loading...</div>;
   }
@@ -403,57 +405,110 @@ const options = {
   }
   if (auth.isAuthenticated) {
     return (
-      <div>
+      <div className="page-container">
         {/* Theme header with logo and switcher */}
         <div className="brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <img src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
-            <span style={{ fontWeight: 600 }}>Brand Theme</span>
+            <span className="brand-title">{brandTitle}</span>
           </div>
-          <select value={theme} onChange={handleThemeChange} className="brand-select" style={{ marginLeft: 8 }}>
-            <option value="theme-a">Theme A</option>
-            <option value="theme-b">Theme B</option>
-            <option value="theme-c">Theme C</option>
-          </select>
-          <select value={mode} onChange={handleModeChange} className="brand-select" style={{ marginLeft: 8 }}>
-            <option value="mode-light">Light</option>
-            <option value="mode-dark">Dark</option>
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <select value={theme} onChange={handleThemeChange} className="brand-select">
+              <option value="theme-a">Theme A</option>
+              <option value="theme-b">Theme B</option>
+              <option value="theme-c">Theme C</option>
+            </select>
+            <select value={mode} onChange={handleModeChange} className="brand-select">
+              <option value="mode-light">Light</option>
+              <option value="mode-dark">Dark</option>
+            </select>
+            <button className="brand-button button-outline" onClick={() => signOutRedirect()}>Sign out</button>
+          </div>
         </div>
-        <SelectBasicExample IMEI = {IMEI_ARR} setValue={setIMEI} setcurrdev = {setDevice} setdevarr = {setDeviceType}/>
-        <DropboxDev devicearr = {deviceType} setcurrdev={setDevice}/>
-        <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
-        <button className="brand-button" onClick={getLatestDp} style={{ marginRight: 8 }}>Refresh</button>
-        <button className="brand-button" onClick={getDpfromtime}>manyDP</button>
-        <pre>time{startDateTime}{endDateTime} </pre>
-        <h1> Welcome {userInfo.username}!!</h1>
-        {/* <pre> ID Token: {auth.user?.id_token} </pre>
-        <pre> Access Token: {auth.user?.access_token} </pre>
-        <pre> Refresh Token: {auth.user?.refresh_token} </pre> */}
-        {/* <pre>{JSON.stringify(deviceMap[device], null, 2)}</pre> */}
-        <Table_disp deviceMap = {deviceMap} device = {device}/>
-        <button className="brand-button" onClick={() => auth.removeUser()} style={{ marginTop: 8 }}>Sign out</button>
-        <ExportCSVButton data={timeSeriesData} filename ={IMEI + "_" + startDateTime.split(".")[0].replace("T", " ")+"_to_"+endDateTime.split(".")[0].replace("T", " ")+".csv"} />
-        <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime}/>
-        {chartData.datasets.length > 0 && (
-          <div style={{ marginTop: '20px'  ,width:'50%'}}>
-            <h3>Time Series Chart: {device} - {dataType}</h3>
-            <Line data={chartData} options={options} />
+        {/* Friendly hint */}
+        <div className="panel" style={{ marginTop: 12 }}>
+          <div className="section-title">Welcome, {userInfo.username || 'User'}</div>
+          <p style={{ margin: 0, opacity: 0.9 }}>Use Filters to select IMEI, device, data type and time range. Preview data and chart, then export CSV if needed.</p>
+        </div>
+
+        {/* Main grid: Filters and Preview */}
+        <div className="grid-2" style={{ alignItems: 'start' }}>
+          <div className="panel">
+            <div className="section-title">Filters</div>
+            <div className="control-row">
+              <SelectBasicExample IMEI={IMEI_ARR} setValue={setIMEI} setcurrdev={setDevice} setdevarr={setDeviceType} />
+            </div>
+            <div className="control-row">
+              <DropboxDev devicearr={deviceType} setcurrdev={setDevice} />
+            </div>
+            <div className="control-row">
+              <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
+            </div>
+            <div className="control-row">
+              <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime} />
+            </div>
+            <div className="control-row">
+              <button className="brand-button" onClick={getLatestDp} style={{ marginRight: 8 }}>Refresh</button>
+              <button className="brand-button button-secondary" onClick={getDpfromtime}>Load Range</button>
+            </div>
           </div>
-        )}
-        {timeSeriesData.length > 0 && chartData.datasets.length === 0 && (
-          <div style={{ marginTop: '20px', color: 'orange' }}>
-            <p>No data available for {device} - {dataType}. Please select a different data type.</p>
+
+          <div className="panel">
+            <div className="section-title">Data and Preview</div>
+            <Table_disp deviceMap={deviceMap} device={device} />
+            {chartData.datasets.length > 0 && (
+              <div className="panel" style={{ marginTop: '16px' }}>
+                <h3>Time Series Chart: {device} - {dataType}</h3>
+                <Line data={chartData} options={options} />
+              </div>
+            )}
+            {timeSeriesData.length > 0 && chartData.datasets.length === 0 && (
+              <div style={{ marginTop: '20px', color: 'orange' }}>
+                <p>No data available for {device} - {dataType}. Please select a different data type.</p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Bottom actions */}
+        <div className="panel" style={{ marginTop: 16 }}>
+          <div className="section-title">Export / Actions</div>
+          <div className="control-row">
+            <ExportCSVButton data={timeSeriesData} filename={IMEI + "_" + startDateTime.split(".")[0].replace("T", " ") + "_to_" + endDateTime.split(".")[0].replace("T", " ") + ".csv"} />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <button className="brand-button" onClick={() => auth.signinRedirect()} style={{ marginRight: 8 }}>Sign in</button>
-      <button className="brand-button" onClick={() => signOutRedirect()}>Sign out</button>
+    <div className="page-container" style={{ paddingTop: 24 }}>
+      <div className="brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+          <span className="brand-title">{brandTitle}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select value={theme} onChange={handleThemeChange} className="brand-select">
+            <option value="theme-a">Theme A</option>
+            <option value="theme-b">Theme B</option>
+            <option value="theme-c">Theme C</option>
+          </select>
+          <select value={mode} onChange={handleModeChange} className="brand-select">
+            <option value="mode-light">Light</option>
+            <option value="mode-dark">Dark</option>
+          </select>
+        </div>
+      </div>
+
+      <section className="hero">
+        <h1 className="hero-title">{brandTitle}</h1>
+        <p className="hero-subtitle">Sign in to view dashboards, filter data, and export CSV.</p>
+        <div className="hero-actions">
+          <button className="brand-button" onClick={() => auth.signinRedirect()}>Sign in</button>
+          <button className="brand-button button-outline" onClick={() => setTheme('theme-c')}>Try Theme C</button>
+        </div>
+      </section>
     </div>
   );
 }

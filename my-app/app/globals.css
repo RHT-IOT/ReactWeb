@@ -31,6 +31,7 @@ body {
   background: var(--brand-primary);
   color: white;
 }
+.brand-title { font-size: 22px; font-weight: 700; letter-spacing: 0.2px; }
 .brand-button {
   background: var(--brand-primary) !important;
   color: white;
@@ -49,6 +50,19 @@ body {
 .brand-button:active { transform: translateY(0); box-shadow: 0 0 0 rgba(0,0,0,0); }
 .brand-button:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(18, 156, 148, 0.35); }
 .brand-button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Outline + Secondary button variants */
+.button-outline {
+  background: transparent !important;
+  color: var(--brand-primary) !important;
+  border: 2px solid var(--brand-primary) !important;
+}
+.button-outline:hover { background: var(--brand-primary) !important; color: #ffffff !important; }
+.button-secondary {
+  background: var(--brand-header-bg, #e6e8ea) !important;
+  color: var(--brand-text, #111) !important;
+  border: 1px solid var(--brand-border-color, #d0d6dc) !important;
+}
 .brand-border {
   border: 2px solid var(--brand-primary);
   border-radius: 6px;
@@ -81,6 +95,12 @@ body {
 }
 .section-title { font-size: 1.125rem; font-weight: 600; margin-bottom: 12px; }
 .control-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+
+/* Hero section for unauthenticated view */
+.hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 36px 16px; }
+.hero-title { font-size: 28px; font-weight: 700; }
+.hero-subtitle { font-size: 16px; opacity: 0.9; }
+.hero-actions { display: flex; gap: 12px; margin-top: 8px; }
 
 /* Table styling */
 .data-table { width: 100%; border-collapse: collapse; }
