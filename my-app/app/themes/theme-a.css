@@ -1,0 +1,45 @@
+.theme-a {
+  /* Palette tuned to RHT logo & site outlook */
+  --brand-primary: #129c94; /* teal accent from logo */
+  --brand-primary-contrast: #ffffff;
+  --brand-bg: #ffffff; /* light site background */
+  --brand-text: #111111; /* dark text for readability */
+  --brand-header-bg: #e6e8ea; /* light gray top bar */
+  --brand-border-color: #d0d6dc;
+  --brand-footer-bg: #0f293d; /* dark navy footer */
+  --brand-footer-text: #ffffff;
+
+  /* Apply site-wide base colors */
+  background: var(--brand-bg) !important;
+  color: var(--brand-text) !important;
+}
+
+/* Header bar: keep light gray, not teal */
+.theme-a .brand-header {
+  background: var(--brand-header-bg) !important;
+  color: var(--brand-text) !important;
+  border-bottom: 1px solid var(--brand-border-color);
+}
+
+/* Buttons: use teal accent from logo */
+.theme-a .brand-button {
+  background: var(--brand-primary) !important;
+  color: var(--brand-primary-contrast) !important;
+}
+.theme-a .brand-button:hover {
+  background: #0b7f7a !important; /* darker teal on hover */
+}
+
+/* Highlight utilities */
+.theme-a .brand-border { border-color: var(--brand-primary) !important; }
+.theme-a .brand-text { color: var(--brand-primary) !important; }
+
+/* Links lean slightly blue to match site accents */
+.theme-a a { color: #2b6ea6; }
+.theme-a a:hover { color: #1f517d; }
+
+/* Footer area styling */
+.theme-a footer {
+  background: var(--brand-footer-bg);
+  color: var(--brand-footer-text);
+}

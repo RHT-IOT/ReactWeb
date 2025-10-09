@@ -19,7 +19,7 @@ function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
     }
   }
   return (
-    <Form.Select aria-label="Default select example" onChange={handleSelect}>
+    <Form.Select className="brand-select" aria-label="Default select example" onChange={handleSelect}>
       <option value="">Choose your IMEI code</option>
        {IMEI.map((opt, index) => (
           <option key={index} value={opt}>
@@ -45,7 +45,7 @@ function DropboxDev({ devicearr, setcurrdev}) {
   }
   return (
     
-    <Form.Select aria-label="Default select example" onChange={handleSelect}>
+    <Form.Select className="brand-select" aria-label="Default select example" onChange={handleSelect}>
       <option value="">Choose your Device</option>
       {Object.entries(devicearr).map(([key, value]) => (
         <option key={key} value={key}>
@@ -76,7 +76,7 @@ function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }) {
   };
 
   return (
-    <Form.Select aria-label="Select data type" value={dataType} onChange={handleSelect}>
+    <Form.Select className="brand-select" aria-label="Select data type" value={dataType} onChange={handleSelect}>
       <option value="">Select Data Type</option>
       {dataFields.map(field => (
         <option key={field} value={field}>
@@ -173,7 +173,7 @@ const ExportCSVButton = ({ data, filename = "export.csv" }) => {
     document.body.removeChild(link);
   };
 
-  return <button onClick={downloadCSV}>Download CSV</button>;
+  return <button className="brand-button" onClick={downloadCSV} style={{ marginTop: 8 }}>Download CSV</button>;
 };
 
 function App() {
@@ -189,6 +189,10 @@ function App() {
   const [endDateTime, setEndDateTime]=useState('');
   const [dataType, setDataType] = useState('');
   const [timeSeriesData, setTimeSeriesData] = useState([]);
+  // Theme state
+  const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-a');
+  const [logoSrc, setLogoSrc] = useState('/logos/logo1.png');
+  const [mode, setMode] = useState<'mode-light' | 'mode-dark'>('mode-light');
 const options = {
   responsive: true,
   plugins: {
@@ -220,6 +224,42 @@ const options = {
     }
   }
 };
+  // Initialize theme & mode from localStorage and apply to body
+  useEffect(() => {
+    const savedTheme = (typeof window !== 'undefined' && localStorage.getItem('theme-name')) as 'theme-a' | 'theme-b' | 'theme-c' | null;
+    const themeToApply = savedTheme || 'theme-a';
+    setTheme(themeToApply);
+    const logoIndex = themeToApply === 'theme-a' ? 1 : themeToApply === 'theme-b' ? 2 : 3;
+    setLogoSrc(`/logos/logo${logoIndex}.png`);
+
+    const savedMode = (typeof window !== 'undefined' && localStorage.getItem('mode-name')) as 'mode-light' | 'mode-dark' | null;
+    const modeToApply = savedMode || 'mode-light';
+    setMode(modeToApply);
+
+    const cls = document.body.classList;
+    cls.remove('theme-a', 'theme-b', 'theme-c', 'mode-light', 'mode-dark');
+    cls.add(themeToApply);
+    cls.add(modeToApply);
+  }, []);
+
+  const handleThemeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value as 'theme-a' | 'theme-b' | 'theme-c';
+    setTheme(value);
+    localStorage.setItem('theme-name', value);
+    const logoIndex = value === 'theme-a' ? 1 : value === 'theme-b' ? 2 : 3;
+    setLogoSrc(`/logos/logo${logoIndex}.png`);
+    const cls = document.body.classList;
+    cls.remove('theme-a', 'theme-b', 'theme-c');
+    cls.add(value);
+  };
+  const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value as 'mode-light' | 'mode-dark';
+    setMode(value);
+    localStorage.setItem('mode-name', value);
+    const cls = document.body.classList;
+    cls.remove('mode-light', 'mode-dark');
+    cls.add(value);
+  };
   useEffect(() => {
     const fetchUserInfo = async () => {
 
@@ -364,11 +404,27 @@ const options = {
   if (auth.isAuthenticated) {
     return (
       <div>
+        {/* Theme header with logo and switcher */}
+        <div className="brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <img src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+            <span style={{ fontWeight: 600 }}>Brand Theme</span>
+          </div>
+          <select value={theme} onChange={handleThemeChange} className="brand-select" style={{ marginLeft: 8 }}>
+            <option value="theme-a">Theme A</option>
+            <option value="theme-b">Theme B</option>
+            <option value="theme-c">Theme C</option>
+          </select>
+          <select value={mode} onChange={handleModeChange} className="brand-select" style={{ marginLeft: 8 }}>
+            <option value="mode-light">Light</option>
+            <option value="mode-dark">Dark</option>
+          </select>
+        </div>
         <SelectBasicExample IMEI = {IMEI_ARR} setValue={setIMEI} setcurrdev = {setDevice} setdevarr = {setDeviceType}/>
         <DropboxDev devicearr = {deviceType} setcurrdev={setDevice}/>
         <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
-        <button onClick={getLatestDp}>Refresh</button>
-        <button onClick={getDpfromtime}>manyDP</button>
+        <button className="brand-button" onClick={getLatestDp} style={{ marginRight: 8 }}>Refresh</button>
+        <button className="brand-button" onClick={getDpfromtime}>manyDP</button>
         <pre>time{startDateTime}{endDateTime} </pre>
         <h1> Welcome {userInfo.username}!!</h1>
         {/* <pre> ID Token: {auth.user?.id_token} </pre>
@@ -376,7 +432,7 @@ const options = {
         <pre> Refresh Token: {auth.user?.refresh_token} </pre> */}
         {/* <pre>{JSON.stringify(deviceMap[device], null, 2)}</pre> */}
         <Table_disp deviceMap = {deviceMap} device = {device}/>
-        <button onClick={() => auth.removeUser()}>Sign out</button>
+        <button className="brand-button" onClick={() => auth.removeUser()} style={{ marginTop: 8 }}>Sign out</button>
         <ExportCSVButton data={timeSeriesData} filename ={IMEI + "_" + startDateTime.split(".")[0].replace("T", " ")+"_to_"+endDateTime.split(".")[0].replace("T", " ")+".csv"} />
         <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime}/>
         {chartData.datasets.length > 0 && (
@@ -396,8 +452,8 @@ const options = {
 
   return (
     <div>
-      <button onClick={() => auth.signinRedirect()}>Sign in</button>
-      <button onClick={() => signOutRedirect()}>Sign out</button>
+      <button className="brand-button" onClick={() => auth.signinRedirect()} style={{ marginRight: 8 }}>Sign in</button>
+      <button className="brand-button" onClick={() => signOutRedirect()}>Sign out</button>
     </div>
   );
 }

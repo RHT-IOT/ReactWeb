@@ -1,0 +1,58 @@
+.theme-b {
+  /* CMA Testing look: dark teal background with aqua accents */
+  --brand-primary: #14a5a1; /* aqua accent */
+  --brand-primary-contrast: #ffffff;
+  --brand-bg: #1f3e41; /* deep teal site background */
+  --brand-text: #ecf3f3; /* near-white text for dark bg */
+  --brand-header-bg: #e9eef1; /* light gray top bar */
+  --brand-border-color: #365b5e; /* muted teal border */
+  --brand-footer-bg: #0e2d30; /* darker footer */
+  --brand-footer-text: #ffffff;
+
+  /* Apply base colors to body */
+  background: var(--brand-bg) !important;
+  color: var(--brand-text) !important;
+}
+
+/* Light mode variant: bright background, dark teal text */
+.theme-b.mode-light {
+  --brand-bg: #f2f6f6; /* very light teal tint */
+  --brand-text: #18393b; /* deep teal text */
+  --brand-header-bg: #ffffff; /* white top bar */
+  --brand-border-color: #c8d6d9; /* soft gray-teal borders */
+  --brand-footer-bg: #e9eef1; /* light gray footer */
+  --brand-footer-text: #18393b;
+
+  /* Apply base colors to body in light mode */
+  background: var(--brand-bg) !important;
+  color: var(--brand-text) !important;
+}
+
+/* Header bar styling */
+.theme-b .brand-header {
+  background: var(--brand-header-bg) !important;
+  color: #18393b !important;
+  border-bottom: 1px solid var(--brand-border-color);
+}
+
+/* Buttons: aqua accent */
+.theme-b .brand-button {
+  background: var(--brand-primary) !important;
+  color: var(--brand-primary-contrast) !important;
+}
+.theme-b .brand-button:hover { background: #0f8885 !important; }
+
+/* Utility accents */
+.theme-b .brand-border { border-color: var(--brand-primary) !important; }
+.theme-b .brand-text { color: var(--brand-primary) !important; }
+
+/* Links use aqua accent */
+.theme-b a { color: #26b6b2; }
+.theme-b a:hover { color: #1a8f8c; }
+
+/* Light mode links slightly darker */
+.theme-b.mode-light a { color: #0f8885; }
+.theme-b.mode-light a:hover { color: #0c6c6a; }
+
+/* Footer */
+.theme-b footer { background: var(--brand-footer-bg); color: var(--brand-footer-text); }

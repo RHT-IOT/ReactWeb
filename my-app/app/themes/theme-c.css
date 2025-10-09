@@ -1,0 +1,49 @@
+.theme-c {
+  /* Natsense-style palette: dark canvas with orange accent */
+  --brand-primary: #f59e0b; /* orange accent */
+  --brand-primary-contrast: #111111;
+  --brand-bg: #121314; /* near-black background */
+  --brand-text: #e5e7eb; /* light text for dark bg */
+  --brand-header-bg: #0d0f10; /* very dark header */
+  --brand-border-color: #2a2f33; /* subtle borders */
+  --brand-footer-bg: #0d0f10; /* dark footer */
+  --brand-footer-text: #e5e7eb;
+
+  background: var(--brand-bg) !important;
+  color: var(--brand-text) !important;
+}
+
+/* Light mode variant: warm light canvas with orange accent */
+.theme-c.mode-light {
+  --brand-bg: #fff8ee; /* light warm background */
+  --brand-text: #1f2937; /* dark charcoal text */
+  --brand-header-bg: #ffffff; /* white header */
+  --brand-border-color: #f2dfc4; /* soft warm border */
+  --brand-footer-bg: #fff2e0; /* light footer */
+  --brand-footer-text: #1f2937;
+  background: var(--brand-bg) !important;
+  color: var(--brand-text) !important;
+}
+
+/* Header bar and utilities */
+.theme-c .brand-header {
+  background: var(--brand-header-bg) !important;
+  color: var(--brand-text) !important;
+  border-bottom: 1px solid var(--brand-border-color);
+}
+.theme-c .brand-border { border-color: var(--brand-primary) !important; }
+.theme-c .brand-text { color: var(--brand-primary) !important; }
+
+/* Buttons: orange accent */
+.theme-c .brand-button {
+  background: var(--brand-primary) !important;
+  color: var(--brand-primary-contrast) !important;
+}
+.theme-c .brand-button:hover { background: #d88606 !important; }
+
+/* Links */
+.theme-c a { color: #f59e0b; }
+.theme-c a:hover { color: #d88606; }
+
+/* Footer */
+.theme-c footer { background: var(--brand-footer-bg); color: var(--brand-footer-text); }
