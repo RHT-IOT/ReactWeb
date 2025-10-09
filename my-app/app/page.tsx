@@ -7,7 +7,6 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 import DateTimeRangePickerValue from "./datepicker";
-
 import dayjs from "dayjs";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale);
 function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
@@ -116,6 +115,67 @@ function Table_disp({deviceMap, device}){
     </tbody>
   </table>);
 }
+const ExportCSVButton = ({ data, filename = "export.csv" }) => {
+  const convertToCSV = (arr) => {
+    if (!arr || arr.length === 0) return "";
+
+    // Define the order you want
+    const fixedOrder = ["DeviceID", "Timestamp", "DeviceType"];
+
+    // Collect all other keys dynamically (excluding the fixed ones)
+    const otherKeys = Array.from(
+      arr.reduce((set, obj) => {
+        Object.keys(obj).forEach((k) => {
+          if (!fixedOrder.includes(k)) set.add(k);
+        });
+        return set;
+      }, new Set())
+    );
+
+    // Final header order
+    const keys = [...fixedOrder, ...otherKeys];
+
+    // Header row
+    const header = keys.join(",") + "\n";
+
+    // Data rows
+    const rows = arr
+      .map((obj) =>
+        keys
+          .map((k) => {
+            let val = obj[k] ?? "";
+            if (typeof val === "string") {
+              val = `"${val.replace(/"/g, '""')}"`; // escape quotes
+            }
+            return val;
+          })
+          .join(",")
+      )
+      .join("\n");
+
+    return header + rows;
+  };
+
+  const downloadCSV = () => {
+    if (!data || data.length === 0) {
+      alert("No data to export");
+      return;
+    }
+    const csv = convertToCSV(data);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return <button onClick={downloadCSV}>Download CSV</button>;
+};
+
 function App() {
   const auth = useAuth();
   const [userInfo, setUserInfo] = useState({ username: "" , name: ""});
@@ -317,6 +377,7 @@ const options = {
         {/* <pre>{JSON.stringify(deviceMap[device], null, 2)}</pre> */}
         <Table_disp deviceMap = {deviceMap} device = {device}/>
         <button onClick={() => auth.removeUser()}>Sign out</button>
+        <ExportCSVButton data={timeSeriesData} />
         <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime}/>
         {chartData.datasets.length > 0 && (
           <div style={{ marginTop: '20px'  ,width:'50%'}}>
