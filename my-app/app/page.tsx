@@ -377,7 +377,7 @@ const options = {
         {/* <pre>{JSON.stringify(deviceMap[device], null, 2)}</pre> */}
         <Table_disp deviceMap = {deviceMap} device = {device}/>
         <button onClick={() => auth.removeUser()}>Sign out</button>
-        <ExportCSVButton data={timeSeriesData} />
+        <ExportCSVButton data={timeSeriesData} filename ={IMEI + "_" + startDateTime.split(".")[0].replace("T", " ")+"_to_"+endDateTime.split(".")[0].replace("T", " ")+".csv"} />
         <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime}/>
         {chartData.datasets.length > 0 && (
           <div style={{ marginTop: '20px'  ,width:'50%'}}>
