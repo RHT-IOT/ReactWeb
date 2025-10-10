@@ -391,7 +391,7 @@ const options = {
   const chartData = prepareChartData();
   const signOutRedirect = () => {
     const clientId = "7bj6qolgca3bbcshiuiinp9tj4";
-    const logoutUri = window.location.origin;
+    const logoutUri = `${window.location.origin}/`;
     const cognitoDomain = "https://ap-southeast-2d19wijvbp.auth.ap-southeast-2.amazoncognito.com";
     try { (auth as any)?.removeUser?.(); } catch {}
     window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
