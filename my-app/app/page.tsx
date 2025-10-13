@@ -369,7 +369,6 @@ const options = {
       })
       .catch(err => console.error("Fetch error:", err));
   };
-  
   // Build chart data for selected device and data type
   const prepareChartData = () => {
     if (!device || device.length === 0 || !dataType || dataType.length === 0 || timeSeriesData.length === 0) {
@@ -406,6 +405,23 @@ const options = {
     try { (auth as any)?.removeUser?.(); } catch {}
     window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
   };
+  const refresh_send = {
+      "Records": [
+        {
+          "eventName": "REFRESH"
+        }
+      ]
+    };
+  const Refresh = () => {
+    return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/Refresh", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${auth.user?.id_token}`,
+      },
+      body: JSON.stringify(refresh_send),
+    })
+  };
   if (auth.isLoading) {
     return <div>Loading...</div>;
   }
@@ -432,7 +448,7 @@ const options = {
               <option value="mode-light">Light</option>
               <option value="mode-dark">Dark</option>
             </select>
-            <button className="brand-button button-outline" onClick={() => signOutRedirect()}>Sign out</button>
+            <button className="brand-button button-outline" onClick={() => signOutRedirect()}>Sign out</button>            
           </div>
         </div>
         {/* Friendly hint */}
@@ -458,7 +474,7 @@ const options = {
               <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime} />
             </div>
             <div className="control-row">
-              <button className="brand-button" onClick={getLatestDp} style={{ marginRight: 8 }}>Refresh</button>
+              <button className="brand-button" onClick={getLatestDp} style={{ marginRight: 8 }}>Get New Data</button>
               <button className="brand-button button-secondary" onClick={getDpfromtime}>Load Range</button>
             </div>
           </div>
@@ -489,6 +505,12 @@ const options = {
             <ExportCSVButton data={timeSeriesData} filename={IMEI + "_" + startDateTime.split(".")[0].replace("T", " ") + "_to_" + endDateTime.split(".")[0].replace("T", " ") + ".csv"} />
           </div>
         </div>
+        {auth.user?.profile.email === "natsense00@gmail.com" ? 
+        <div className="panel" style={{ marginTop: 16 }}>
+          <div className="section-title">Refresh sdid and dsid</div>
+          <button className="brand-button button-outline" onClick={Refresh}>Refresh</button>
+          </div> 
+        : <></>}
       </div>
     );
   }
