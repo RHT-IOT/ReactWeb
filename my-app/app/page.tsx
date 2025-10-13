@@ -14,8 +14,8 @@ function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
     if(e.target.value){
       console.log(e.target.value);
       setValue(e.target.value)
-      setcurrdev("");
-      setdevarr("");
+      setcurrdev([]);
+      setdevarr([]);
     }
   }
   return (
@@ -31,23 +31,20 @@ function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
 }
 function DropboxDev({ devicearr, setcurrdev}) {
   if(!devicearr){
-
-  return (
-    <p>click refresh</p>
-  );
+    return (<p>click refresh</p>);
   }
-  const handleSelect=(e)=>{
-    if(e.target.value){
-      console.log(e.target.value);
-      console.log("set dev:", devicearr[e.target.value]);
-      setcurrdev(devicearr[e.target.value]);
-    }
-  }
+  const handleMultiSelect=(e)=>{
+    const selectedKeys = Array.from(e.target.selectedOptions).map(opt => opt.value);
+    const values = selectedKeys.map(key => Array.isArray(devicearr) ? devicearr[key] : devicearr[key]);
+    console.log("set devices:", values);
+    setcurrdev(values);
+  };
+  const entries = Array.isArray(devicearr)
+    ? devicearr.map((val, idx) => [String(idx), val])
+    : Object.entries(devicearr);
   return (
-    
-    <Form.Select className="brand-select" aria-label="Default select example" onChange={handleSelect}>
-      <option value="">Choose your Device</option>
-      {Object.entries(devicearr).map(([key, value]) => (
+    <Form.Select multiple size={Math.min(entries.length, 6)} className="brand-select" aria-label="Select devices" onChange={handleMultiSelect}>
+      {entries.map(([key, value]) => (
         <option key={key} value={key}>
           {value}
         </option>
@@ -57,12 +54,12 @@ function DropboxDev({ devicearr, setcurrdev}) {
 }
 
 function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }) {
-  if (!timeSeriesData || timeSeriesData.length === 0 || !device) {
-    return <p>Select a device first</p>;
+  if (!timeSeriesData || timeSeriesData.length === 0 || !device || device.length === 0) {
+    return <p>Select device(s) first</p>;
   }
 
   const meta = new Set(["DeviceID", "DeviceType", "Timestamp"]);
-  const deviceItems = timeSeriesData.filter(i => i.DeviceType === device);
+  const deviceItems = timeSeriesData.filter(i => device.includes(i.DeviceType));
   const dataFields = Array.from(new Set(
     deviceItems.flatMap(i => Object.keys(i).filter(k => !meta.has(k) && typeof i[k] === 'number'))
   ));
@@ -71,13 +68,13 @@ function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }) {
     return <p>No numeric data available</p>;
   }
 
-  const handleSelect = (e) => {
-    setDataType(e.target.value);
+  const handleMultiSelect = (e) => {
+    const selected = Array.from(e.target.selectedOptions).map(opt => opt.value);
+    setDataType(selected);
   };
 
   return (
-    <Form.Select className="brand-select" aria-label="Select data type" value={dataType} onChange={handleSelect}>
-      <option value="">Select Data Type</option>
+    <Form.Select multiple size={Math.min(dataFields.length, 6)} className="brand-select" aria-label="Select data types" value={dataType} onChange={handleMultiSelect}>
       {dataFields.map(field => (
         <option key={field} value={field}>
           {field}
@@ -88,32 +85,39 @@ function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }) {
 }
 
 function Table_disp({deviceMap, device}){
-  if(!deviceMap || !device){
-    return(
-        <pre> No data Yet </pre>
-    );
+  if(!deviceMap || !device || device.length === 0){
+    return(<pre> No data Yet </pre>);
   }
-  const timestamp = deviceMap[device]["Timestamp"].split(".")[0].replace("T", " ");
-  return(<table border="1" style={{ borderCollapse: "collapse", width: "60%" }}>
-    <thead>
-      <tr>
-        <th>Variable</th>
-        <th>Value</th>
-        <th>Timestamp</th>
-      </tr>
-    </thead>
-    <tbody>
-      
-      {Object.entries(deviceMap[device]).filter(([key]) => (key !== "Timestamp")).filter(([key]) => (key !== "DeviceID")).filter(([key]) => (key !== "DeviceType")).map(([key, value]) => (
-        <tr key={key}>
-          <td>{key}</td>
-          <td>{String(value)}</td>
-          <td>{timestamp}</td>
+  const rows = device.flatMap(dev => {
+    const entry = deviceMap[dev];
+    if(!entry) return [];
+    const ts = entry["Timestamp"].split(".")[0].replace("T", " ");
+    return Object.entries(entry)
+      .filter(([key]) => key !== "Timestamp" && key !== "DeviceID" && key !== "DeviceType")
+      .map(([key, value]) => ({ device: dev, key, value: String(value), ts }));
+  });
+  return(
+    <table border="1" style={{ borderCollapse: "collapse", width: "100%" }}>
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>Variable</th>
+          <th>Value</th>
+          <th>Timestamp</th>
         </tr>
-      ))}
-       
-    </tbody>
-  </table>);
+      </thead>
+      <tbody>
+        {rows.map((r, idx) => (
+          <tr key={`${r.device}-${r.key}-${idx}`}>
+            <td>{r.device}</td>
+            <td>{r.key}</td>
+            <td>{r.value}</td>
+            <td>{r.ts}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 const ExportCSVButton = ({ data, filename = "export.csv" }) => {
   const convertToCSV = (arr) => {
@@ -184,10 +188,10 @@ function App() {
   const [deviceMap, setDeviceMap]=useState('');
   const [timestamp, setTimestamp]=useState('');
   const [deviceType, setDeviceType]=useState('');
-  const [device, setDevice]=useState('');
+  const [device, setDevice]=useState<string[]>([]);
   const [startDateTime, setStartDateTime]=useState('');
   const [endDateTime, setEndDateTime]=useState('');
-  const [dataType, setDataType] = useState('');
+  const [dataType, setDataType] = useState<string[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState([]);
   // Theme state
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-a');
@@ -197,6 +201,7 @@ function App() {
   const brandTitle = theme === 'theme-a' ? 'RHT Limited' : theme === 'theme-b' ? 'CMA testing' : 'Natsense';
 const options = {
   responsive: true,
+  maintainAspectRatio: false,
   plugins: {
     title: {
       display: true,
@@ -221,7 +226,7 @@ const options = {
     y: {
       title: {
         display: true,
-        text: dataType || 'Value'
+        text: Array.isArray(dataType) && dataType.length === 1 ? dataType[0] : 'Value'
       }
     }
   }
@@ -367,25 +372,30 @@ const options = {
   
   // Build chart data for selected device and data type
   const prepareChartData = () => {
-    if (!device || !dataType || timeSeriesData.length === 0) {
+    if (!device || device.length === 0 || !dataType || dataType.length === 0 || timeSeriesData.length === 0) {
       return { datasets: [] };
     }
-    const deviceData = timeSeriesData.filter(item => item.DeviceType === device);
-    const points = deviceData
-      .filter(item => typeof item[dataType] === 'number')
-      .map(item => ({ x: item.Timestamp.split(".")[0].replace("T", " "), y: item[dataType] }));
-    console.log("points:",points);
-    return {
-      datasets: [
-        {
-          label: `${device} - ${dataType}`,
-          data: points,
-          borderColor: 'rgb(75, 192, 192)',
-          backgroundColor: 'rgba(75, 192, 192, 0.2)',
-          tension: 0.1
+    const colors = ['#36a2eb', '#ff6384', '#4bc0c0', '#9966ff', '#ff9f40', '#c9cbcf'];
+    const datasets: any[] = [];
+    device.forEach((dev, di) => {
+      const deviceData = timeSeriesData.filter(item => item.DeviceType === dev);
+      dataType.forEach((dt, ti) => {
+        const points = deviceData
+          .filter(item => typeof item[dt] === 'number')
+          .map(item => ({ x: item.Timestamp.split('.') [0].replace('T', ' '), y: item[dt] }));
+        if (points.length > 0) {
+          const color = colors[(di * dataType.length + ti) % colors.length];
+          datasets.push({
+            label: `${dev} - ${dt}`,
+            data: points,
+            borderColor: color,
+            backgroundColor: 'transparent',
+            tension: 0.1,
+          });
         }
-      ]
-    };
+      });
+    });
+    return { datasets };
   };
 
   const chartData = prepareChartData();
@@ -458,13 +468,15 @@ const options = {
             <Table_disp deviceMap={deviceMap} device={device} />
             {chartData.datasets.length > 0 && (
               <div className="panel" style={{ marginTop: '16px' }}>
-                <h3>Time Series Chart: {device} - {dataType}</h3>
-                <Line data={chartData} options={options} />
+                <h3>Time Series Chart: {Array.isArray(device) ? device.join(', ') : device} - {Array.isArray(dataType) ? dataType.join(', ') : dataType}</h3>
+                <div style={{ height: 500 }}>
+                  <Line data={chartData} options={options} />
+                </div>
               </div>
             )}
             {timeSeriesData.length > 0 && chartData.datasets.length === 0 && (
               <div style={{ marginTop: '20px', color: 'orange' }}>
-                <p>No data available for {device} - {dataType}. Please select a different data type.</p>
+                <p>No data available for {Array.isArray(device) ? device.join(', ') : device} - {Array.isArray(dataType) ? dataType.join(', ') : dataType}. Please select a different data type.</p>
               </div>
             )}
           </div>
