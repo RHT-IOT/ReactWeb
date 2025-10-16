@@ -9,6 +9,37 @@ import 'chartjs-adapter-date-fns';
 import DateTimeRangePickerValue from "./datepicker";
 import dayjs from "dayjs";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, ArcElement);
+// Plugin to draw the value (and optional unit) in the center of the doughnut
+const centerTextPlugin: any = {
+  id: 'centerText',
+  afterDraw(chart: any) {
+    const meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data || meta.data.length === 0) return;
+    const arc = meta.data[0];
+    const x = arc.x;
+    const y = arc.y;
+    const opts = chart.options?.plugins?.centerText || {};
+    const value = chart.data?.datasets?.[0]?.data?.[0]; // first segment is value
+    if (value === undefined || value === null) return;
+
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const fontSize = opts.fontSize || 20;
+    const fontFamily = opts.fontFamily || 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
+    ctx.font = `600 ${fontSize}px ${fontFamily}`;
+    ctx.fillStyle = opts.color || '#111';
+    ctx.fillText(String(value), x, y);
+    if (opts.unit) {
+      ctx.font = `400 ${Math.round(fontSize * 0.65)}px ${fontFamily}`;
+      ctx.fillStyle = opts.subColor || '#555';
+      ctx.fillText(String(opts.unit), x, y + fontSize * 0.9);
+    }
+    ctx.restore();
+  }
+};
+ChartJS.register(centerTextPlugin);
 function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
   const handleSelect=(e)=>{
     if(e.target.value){
@@ -139,19 +170,18 @@ function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2' }: an
     rotation: -125,
     circumference: Math.PI * 80,
     cutout: '60%',
-    plugins: { legend: { display: false }, tooltip: { enabled: false }, title: { display: false } },
+    plugins: {
+      legend: { display: false },
+      tooltip: { enabled: false },
+      title: { display: false },
+      centerText: { unit, color: '#111', subColor: '#666', fontSize: 20 }
+    },
   };
   return (
     <div className="panel" style={{ padding: 12 }}>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
       <div style={{ height: 150, position: 'relative' }}>
         <Doughnut data={data} options={optionsGauge} />
-        <div style={{ position: 'relative', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.9)', borderRadius: 8, padding: '4px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }}>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>{value}</div>
-            {unit ? <div style={{ fontSize: 12, opacity: 0.8 }}>{unit}</div> : null}
-          </div>
-        </div>
       </div>
       {/* <div style={{ textAlign: 'center', opacity: 0.7, fontSize: 12 }}>0 – {max}</div> */}
     </div>
