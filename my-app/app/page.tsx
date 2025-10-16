@@ -180,7 +180,7 @@ function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2' }: an
   return (
     <div className="panel" style={{ padding: 12 }}>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
-      <div style={{ height: 150, position: 'relative' }}>
+      <div style={{ height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Doughnut data={data} options={optionsGauge} />
       </div>
       {/* <div style={{ textAlign: 'center', opacity: 0.7, fontSize: 12 }}>0 – {max}</div> */}
