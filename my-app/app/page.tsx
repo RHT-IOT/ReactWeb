@@ -1,6 +1,6 @@
 // App.js
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "react-oidc-context";
 import Form from 'react-bootstrap/Form';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, ArcElement } from 'chart.js';
@@ -317,6 +317,8 @@ function App() {
   const [endDateTime, setEndDateTime]=useState('');
   const [dataType, setDataType] = useState<string[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState([]);
+  const [lastRefresh, setLastRefresh] = useState<string>("");
+  const pollerRef = useRef<number | null>(null);
   // Theme state
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-b');
   const [logoSrc, setLogoSrc] = useState('/logos/logo1.png');
@@ -457,6 +459,7 @@ const options = {
         }
         setDeviceMap(map);
         setDeviceType(dev);
+        setLastRefresh(dayjs().format('YYYY-MM-DD HH:mm:ss'));
         console.log("dev arr:",dev);
         // do something with data here
       })
@@ -493,6 +496,28 @@ const options = {
       })
       .catch(err => console.error("Fetch error:", err));
   };
+  // Manual auto-refresh: start only when user clicks "Get New Data"
+  const startAutoRefresh = () => {
+    if (!auth.isAuthenticated || !IMEI) return;
+    if (pollerRef.current) {
+      clearInterval(pollerRef.current);
+      pollerRef.current = null;
+    }
+    pollerRef.current = window.setInterval(() => {
+      getLatestDp();
+    }, 5 * 60 * 1000); // 5 minutes
+  };
+  const stopAutoRefresh = () => {
+    if (pollerRef.current) {
+      clearInterval(pollerRef.current);
+      pollerRef.current = null;
+    }
+  };
+  // Clear existing interval when IMEI changes or on unmount
+  useEffect(() => {
+    stopAutoRefresh();
+    return () => stopAutoRefresh();
+  }, [IMEI]);
   // Build chart data for selected device and data type
   const prepareChartData = () => {
     if (!device || device.length === 0 || !dataType || dataType.length === 0 || timeSeriesData.length === 0) {
@@ -598,13 +623,16 @@ const options = {
               <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime} />
             </div>
             <div className="control-row">
-              <button className="brand-button" onClick={getLatestDp} style={{ marginRight: 8 }}>Get New Data</button>
+              <button className="brand-button" onClick={() => { getLatestDp(); startAutoRefresh(); }} style={{ marginRight: 8 }}>Get New Data</button>
               <button className="brand-button button-secondary" onClick={getDpfromtime}>Load Range</button>
             </div>
           </div>
 
           <div className="panel">
             <div className="section-title">Latest Data Dashboard</div>
+            <div style={{ marginTop: 4, marginBottom: 8, opacity: 0.7, fontSize: 12 }}>
+              Last call: {lastRefresh || '-'}
+            </div>
             <LatestDashboard deviceMap={deviceMap} device={device} dataType={dataType} />
             {chartData.datasets.length > 0 && (
               <div className="panel" style={{ marginTop: '16px' }}>
