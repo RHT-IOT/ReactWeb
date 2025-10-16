@@ -10,7 +10,7 @@ export default function CallbackPage() {
     // react-oidc-context will automatically handle the redirect
     // and update auth state. You can redirect to home after login.
     if (auth.isAuthenticated) {
-      window.location.replace("/");
+      window.location.replace("/login");
     }
   }, [auth.isAuthenticated]);
 

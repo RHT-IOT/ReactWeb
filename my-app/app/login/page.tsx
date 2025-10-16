@@ -1,4 +1,3 @@
-// App.js
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "react-oidc-context";
@@ -6,9 +5,11 @@ import Form from 'react-bootstrap/Form';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, ArcElement } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
-import DateTimeRangePickerValue from "./datepicker";
+import DateTimeRangePickerValue from "../datepicker";
 import dayjs from "dayjs";
+
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, ArcElement);
+
 // Plugin to draw the value (and optional unit) in the center of the doughnut
 const centerTextPlugin: any = {
   id: 'centerText',
@@ -19,7 +20,7 @@ const centerTextPlugin: any = {
     const x = arc.x;
     const y = arc.y;
     const opts = chart.options?.plugins?.centerText || {};
-    const value = chart.data?.datasets?.[0]?.data?.[0]; // first segment is value
+    const value = chart.data?.datasets?.[0]?.data?.[0];
     if (value === undefined || value === null) return;
 
     const ctx = chart.ctx;
@@ -40,10 +41,10 @@ const centerTextPlugin: any = {
   }
 };
 ChartJS.register(centerTextPlugin);
+
 function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
   const handleSelect=(e)=>{
     if(e.target.value){
-      console.log(e.target.value);
       setValue(e.target.value)
       setcurrdev([]);
       setdevarr([]);
@@ -60,6 +61,7 @@ function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
     </Form.Select>
   );
 }
+
 function DropboxDev({ devicearr, setcurrdev}) {
   if(!devicearr){
     return (<p>click refresh</p>);
@@ -67,7 +69,6 @@ function DropboxDev({ devicearr, setcurrdev}) {
   const handleMultiSelect=(e)=>{
     const selectedKeys = Array.from(e.target.selectedOptions).map(opt => opt.value);
     const values = selectedKeys.map(key => Array.isArray(devicearr) ? devicearr[key] : devicearr[key]);
-    console.log("set devices:", values);
     setcurrdev(values);
   };
   const entries = Array.isArray(devicearr)
@@ -183,7 +184,6 @@ function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2' }: an
       <div style={{ height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Doughnut data={data} options={optionsGauge} />
       </div>
-      {/* <div style={{ textAlign: 'center', opacity: 0.7, fontSize: 12 }}>0 – {max}</div> */}
     </div>
   );
 }
@@ -243,10 +243,10 @@ function LatestDashboard({ deviceMap, device, dataType }: any) {
     </div>
   );
 }
+
 const ExportCSVButton = ({ data, filename = "export.csv" }) => {
   const convertToCSV = (arr) => {
     if (!arr || arr.length === 0) return "";
-
     // Define the order you want
     const fixedOrder = ["DeviceID", "Timestamp", "DeviceType"];
 
@@ -304,7 +304,7 @@ const ExportCSVButton = ({ data, filename = "export.csv" }) => {
   return <button className="brand-button" onClick={downloadCSV}>Download CSV</button>;
 };
 
-function App() {
+function LoginApp() {
   const auth = useAuth();
   const [userInfo, setUserInfo] = useState({ username: "" , name: ""});
   const [IMEI_ARR, setIMEI_ARR] = useState([]);
@@ -319,44 +319,47 @@ function App() {
   const [timeSeriesData, setTimeSeriesData] = useState([]);
   const [lastRefresh, setLastRefresh] = useState<string>("");
   const pollerRef = useRef<number | null>(null);
+
   // Theme state
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-b');
   const [logoSrc, setLogoSrc] = useState('/logos/logo1.png');
   const [mode, setMode] = useState<'mode-light' | 'mode-dark'>('mode-light');
   // Dynamic brand title per theme
   const brandTitle = theme === 'theme-a' ? 'RHT Limited' : theme === 'theme-b' ? 'CMA testing' : 'Natsense';
-const options = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    title: {
-      display: true,
-      text: 'Sensor Data Time Series',
-    },
-    legend: {
-      display: true
-    }
-  },
-  scales: {
-    x: {
-      type: 'time',
-      time: {
-        unit: 'minute'
-      },
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
       title: {
         display: true,
-        text: 'Timestamp'
+        text: 'Sensor Data Time Series',
       },
-      
+      legend: {
+        display: true
+      }
     },
-    y: {
-      title: {
-        display: true,
-        text: Array.isArray(dataType) && dataType.length === 1 ? dataType[0] : 'Value'
+    scales: {
+      x: {
+        type: 'time',
+        time: {
+          unit: 'minute'
+        },
+        title: {
+          display: true,
+          text: 'Timestamp'
+        },
+        
+      },
+      y: {
+        title: {
+          display: true,
+          text: Array.isArray(dataType) && dataType.length === 1 ? dataType[0] : 'Value'
+        }
       }
     }
-  }
-};
+  };
+
   // Initialize theme & mode from localStorage and apply to body
   useEffect(() => {
     const savedTheme = (typeof window !== 'undefined' && localStorage.getItem('theme-name')) as 'theme-a' | 'theme-b' | 'theme-c' | null;
@@ -385,6 +388,7 @@ const options = {
     cls.remove('theme-a', 'theme-b', 'theme-c');
     cls.add(value);
   };
+
   const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value as 'mode-light' | 'mode-dark';
     setMode(value);
@@ -393,10 +397,9 @@ const options = {
     cls.remove('mode-light', 'mode-dark');
     cls.add(value);
   };
+
   useEffect(() => {
     const fetchUserInfo = async () => {
-
-      console.log("Hi");
       if (auth.isAuthenticated) {
         const response = await fetch(
           "https://ap-southeast-2d19wijvbp.auth.ap-southeast-2.amazoncognito.com/oauth2/userInfo",
@@ -408,35 +411,31 @@ const options = {
           }
         );
         const data = await response.json();
-        console.log("User Info:", data);
         setUserInfo(data);
       }
-      
     };
 
     fetchUserInfo();
-    const callApi = async (email) => {
-      
-    if(auth.isAuthenticated && email){
-      const response = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getIMEI", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" , 
-          "Authorization": `Bearer ${auth.user?.id_token}`,},
-        body: JSON.stringify({ email })
-      });
 
-      const data = await response.json();
-      const arr =  JSON.parse(data?.body);
-      const flat = arr.flat(); 
-      console.log("IMEI:", flat);
-      setIMEI_ARR(flat);
-    };
-    
+    const callApi = async (email) => {
+      if(auth.isAuthenticated && email){
+        const response = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getIMEI", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" , 
+            "Authorization": `Bearer ${auth.user?.id_token}`,},
+          body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+        const arr =  JSON.parse(data?.body);
+        const flat = arr.flat(); 
+        setIMEI_ARR(flat);
+      };
     }
     callApi(auth.user?.profile.email);
   }, [auth.isAuthenticated, auth.user?.access_token,auth.user?.profile.email,auth.user?.id_token]);
   
-    const getLatestDp = () => {
+  const getLatestDp = () => {
     return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getLatestDP", {
       method: "POST",
       headers: {
@@ -447,7 +446,6 @@ const options = {
     })
       .then(res => res.json())
       .then(data => {
-        console.log("API response:", data);
         const temp = JSON.parse(data.body);
         const map = {};
         const dev = {};
@@ -460,11 +458,10 @@ const options = {
         setDeviceMap(map);
         setDeviceType(dev);
         setLastRefresh(dayjs().format('YYYY-MM-DD HH:mm:ss'));
-        console.log("dev arr:",dev);
-        // do something with data here
       })
       .catch(err => console.error("Fetch error:", err));
   };
+
   const getDpfromtime = () => {
     return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getDpFromTime", {
       method: "POST",
@@ -476,26 +473,13 @@ const options = {
     })
       .then(res => res.json())
       .then(data => {
-        console.log("API response:", data);
         const temp = JSON.parse(data.body);
         setDeviceType(temp.deviceTypes || []);
         setTimeSeriesData(temp.items || []);
-        console.log("time series:",temp.items || []);
-        // const map = {};
-        // const dev = {};
-        // let idx = 0;
-        // for (const item of temp) {
-        //   dev[idx] = item.DeviceType;
-        //   map[item.DeviceType] = item;
-        //   idx++;
-        // }
-        // setDeviceMap(map);
-        // setDeviceType(dev);
-        // console.log("dev arr:",dev);
-        // do something with data here
       })
       .catch(err => console.error("Fetch error:", err));
   };
+
   // Manual auto-refresh: start only when user clicks "Get New Data"
   const startAutoRefresh = () => {
     if (!auth.isAuthenticated || !IMEI) return;
@@ -507,17 +491,20 @@ const options = {
       getLatestDp();
     }, 5 * 60 * 1000); // 5 minutes
   };
+
   const stopAutoRefresh = () => {
     if (pollerRef.current) {
       clearInterval(pollerRef.current);
       pollerRef.current = null;
     }
   };
+
   // Clear existing interval when IMEI changes or on unmount
   useEffect(() => {
     stopAutoRefresh();
     return () => stopAutoRefresh();
   }, [IMEI]);
+
   // Build chart data for selected device and data type
   const prepareChartData = () => {
     if (!device || device.length === 0 || !dataType || dataType.length === 0 || timeSeriesData.length === 0) {
@@ -547,6 +534,7 @@ const options = {
   };
 
   const chartData = prepareChartData();
+
   const signOutRedirect = () => {
     const clientId = "7bj6qolgca3bbcshiuiinp9tj4";
     const logoutUri = `${window.location.origin}/`;
@@ -554,13 +542,15 @@ const options = {
     try { (auth as any)?.removeUser?.(); } catch {}
     window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
   };
+
   const refresh_send = {
-      "Records": [
-        {
-          "eventName": "REFRESH"
-        }
-      ]
-    };
+    "Records": [
+      {
+        "eventName": "REFRESH"
+      }
+    ]
+  };
+
   const Refresh = () => {
     return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/Refresh", {
       method: "POST",
@@ -571,6 +561,7 @@ const options = {
       body: JSON.stringify(refresh_send),
     })
   };
+
   if (auth.isLoading) {
     return <div>Loading...</div>;
   }
@@ -578,46 +569,100 @@ const options = {
   if (auth.error) {
     return <div>Encountering error... {auth.error.message}</div>;
   }
-  if (auth.isAuthenticated) {
-    if (typeof window !== 'undefined') {
-      window.location.replace('/login');
-    }
-    return <div>Redirecting to dashboard...</div>;
+
+  if (!auth.isAuthenticated) {
+    return (
+      <div className="page-container" style={{ paddingTop: 24 }}>
+        <div className="panel">
+          <div className="section-title">Not signed in</div>
+          <p>Please go to the home page and click Sign in.</p>
+          <a href="/" className="brand-button">Go to Home</a>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="page-container" style={{ paddingTop: 24 }}>
+    <div className="page-container">
+      {/* Theme header with logo and switcher */}
       <div className="brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <img src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
           <span className="brand-title">{brandTitle}</span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select value={theme} onChange={handleThemeChange} className="brand-select">
-            <option value="theme-a">Theme A</option>
-            <option value="theme-b">Theme B</option>
-            <option value="theme-c">Theme C</option>
-          </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <select value={mode} onChange={handleModeChange} className="brand-select">
             <option value="mode-light">Light</option>
             <option value="mode-dark">Dark</option>
           </select>
+          <button className="brand-button button-outline" onClick={() => signOutRedirect()}>Sign out</button>            
+        </div>
+      </div>
+      {/* Friendly hint */}
+      <div className="panel" style={{ marginTop: 12 }}>
+        <div className="section-title">Welcome, {userInfo.username || 'User'}</div>
+        <p style={{ margin: 0, opacity: 0.9 }}>Use Filters to select IMEI, device, data type and time range. Preview data and chart, then export CSV if needed.</p>
+      </div>
+
+      {/* Main grid: Filters and Preview */}
+      <div className="grid-2" style={{ alignItems: 'start' }}>
+        <div className="panel">
+          <div className="section-title">Filters</div>
+          <div className="control-row">
+            <SelectBasicExample IMEI={IMEI_ARR} setValue={setIMEI} setcurrdev={setDevice} setdevarr={setDeviceType} />
+          </div>
+          <div className="control-row">
+            <DropboxDev devicearr={deviceType} setcurrdev={setDevice} />
+          </div>
+          <div className="control-row">
+            <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
+          </div>
+          <div className="control-row">
+            <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime} />
+          </div>
+          <div className="control-row">
+            <button className="brand-button" onClick={() => { getLatestDp(); startAutoRefresh(); }} style={{ marginRight: 8 }}>Get New Data</button>
+            <button className="brand-button button-secondary" onClick={getDpfromtime}>Load Range</button>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="section-title">Latest Data Dashboard</div>
+          <div style={{ marginTop: 4, marginBottom: 8, opacity: 0.7, fontSize: 12 }}>
+            Last call: {lastRefresh || '-'}
+          </div>
+          <LatestDashboard deviceMap={deviceMap} device={device} dataType={dataType} />
+          {chartData.datasets.length > 0 && (
+            <div className="panel" style={{ marginTop: '16px' }}>
+              <h3>Time Series Chart: {Array.isArray(device) ? device.join(', ') : device} - {Array.isArray(dataType) ? dataType.join(', ') : dataType}</h3>
+              <div style={{ height: 500 }}>
+                <Line data={chartData} options={options} />
+              </div>
+            </div>
+          )}
+          {timeSeriesData.length > 0 && chartData.datasets.length === 0 && (
+            <div style={{ marginTop: '20px', color: 'orange' }}>
+              <p>No data available for {Array.isArray(device) ? device.join(', ') : device} - {Array.isArray(dataType) ? dataType.join(', ') : dataType}. Please select a different data type.</p>
+            </div>
+          )}
         </div>
       </div>
 
-      <section className="hero">
-        <h1 className="hero-title">{brandTitle}</h1>
-        <div className="hero-actions"> 
-        <img src={'/companyPhoto/RHT2.avif'} alt="Company Logo" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
-        <img src={'/companyPhoto/RHT1.avif'} alt="Company Logo" style={{ height: '400px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+      {/* Bottom actions */}
+      <div className="panel" style={{ marginTop: 16 }}>
+        <div className="section-title">Export / Actions</div>
+        <div className="control-row">
+          <ExportCSVButton data={timeSeriesData} filename={IMEI + "_" + startDateTime.split(".")[0].replace("T", " ") + "_to_" + endDateTime.split(".")[0].replace("T", " ") + ".csv"} />
         </div>
-        <p className="hero-subtitle">Sign in to view dashboards, filter data, and export CSV.</p>
-        <div className="hero-actions"> 
-          <button className="brand-button" onClick={() => auth.signinRedirect()}>Sign in</button>
-        </div>
-      </section>
+      </div>
+      {auth.user?.profile.email === "natsense00@gmail.com" ? 
+      <div className="panel" style={{ marginTop: 16 }}>
+        <div className="section-title">Refresh sdid and dsid</div>
+        <button className="brand-button button-outline" onClick={Refresh}>Refresh</button>
+        </div> 
+      : <></>}
     </div>
   );
 }
 
-export default App;
+export default LoginApp;
