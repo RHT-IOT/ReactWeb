@@ -5,7 +5,7 @@ import mapData from '../../public/3dmodel/China.json' // 确保路径正确
 import hkData from '../../public/3dmodel/HongKong.json' // 确保路径正确
 import macauData from '../../public/3dmodel/Macau.json' // 确保路径正确
 
-const Map3DComponent: React.FC = () => {
+const EchartMap: React.FC = () => {
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInstanceRef = useRef<echarts.EChartsType | null>(null)
 
@@ -161,4 +161,4 @@ const Map3DComponent: React.FC = () => {
   )
 }
 
-export default Map3DComponent
+export default EchartMap

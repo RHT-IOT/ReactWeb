@@ -3,6 +3,7 @@
 import Map3DComponent from "./three";
 import MyBabylonScene from "./babylon";
 import GeoJsonBabylonMap from "./bbmap";
+import EchartMap from "./echart";
 
     // src/App.js
 import React from 'react';

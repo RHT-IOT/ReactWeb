@@ -1,7 +1,7 @@
 "use client";
 // Map3DComponent.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Html, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import * as d3 from "d3-geo";
@@ -88,6 +88,7 @@ function Region({ feature, onClick, isSelected, onSelectName }) {
         <mesh
           key={idx}
           geometry={geometry}
+          scale={[1, 1, hovered ? 3 : 1]}
           onClick={() => { onClick?.(feature); onSelectName?.(feature.properties?.name ?? "Unknown"); }}
           onPointerOver={() => setHovered(true)}
           onPointerOut={() => setHovered(false)}
@@ -124,26 +125,138 @@ function Region({ feature, onClick, isSelected, onSelectName }) {
   );
 }
 
+function GradientPillar({ height = 60, radius = 50, topColor = "#ff4040", bottomColor = "#ff9c3d", opacity = 0.85, glow = false, glowColor = "#2f7cff", glowScale = 1.6, glowStrength = 1.0, onClick, onPointerOver, onPointerOut }: { height?: number; radius?: number; topColor?: string; bottomColor?: string; opacity?: number; glow?: boolean; glowColor?: string; glowScale?: number; glowStrength?: number; onClick?: (e: any) => void; onPointerOver?: (e: any) => void; onPointerOut?: (e: any) => void; }) {
+  const materialRef = React.useRef<THREE.ShaderMaterial>(null);
+  const geometry = React.useMemo(() => new THREE.CylinderGeometry(radius, radius, height, 32, 1, true), [radius, height]);
+  const shaderMaterial = React.useMemo(() => new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uTopColor: { value: new THREE.Color(topColor) },
+      uBottomColor: { value: new THREE.Color(bottomColor) },
+      uOpacity: { value: opacity },
+      uTime: { value: 0 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec2 vUv;
+      uniform vec3 uTopColor;
+      uniform vec3 uBottomColor;
+      uniform float uOpacity;
+      uniform float uTime;
+      void main() {
+        float grad = clamp(vUv.y, 0.0, 1.0);
+        float pulse = 0.5 + 0.5 * sin(uTime + vUv.y * 6.2831);
+        grad = clamp(grad * (0.75 + 0.25 * pulse), 0.0, 1.0);
+        vec3 col = mix(uBottomColor, uTopColor, grad);
+        float alpha = uOpacity * grad;
+        gl_FragColor = vec4(col, alpha);
+      }
+    `
+  }), [topColor, bottomColor, opacity]);
+
+  const glowGeometry = React.useMemo(() => new THREE.CylinderGeometry(radius , radius, height + 2, 32, 1, true), [radius, height, glowScale]);
+  const glowMaterial = React.useMemo(() => new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uGlowColor: { value: new THREE.Color(glowColor) },
+      uTime: { value: 0 },
+      uStrength: { value: glowStrength }
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main(){
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vNormal = normalize(normalMatrix * normal);
+        vViewDir = normalize(-mvPosition.xyz);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      uniform vec3 uGlowColor;
+      uniform float uTime;
+      uniform float uStrength;
+      float fres = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 2.0);
+      float pulse = 0.6 + 0.4 * sin(uTime * 2.0);
+      float alpha = fres * pulse * uStrength;
+      gl_FragColor = vec4(uGlowColor, alpha);
+    `
+  }), [glowColor, glowStrength]);
+
+  useFrame((_, delta) => {
+    if (materialRef.current) {
+      materialRef.current.uniforms.uTime.value += delta * 2.0;
+    }
+    glowMaterial.uniforms.uTime.value += delta;
+  });
+
+  return (
+    <group>
+      <mesh
+        rotation={[Math.PI / 2, 0, 0]}
+        position={[0, 0, height / 2]}
+        geometry={geometry}
+        material={shaderMaterial}
+        onClick={onClick}
+        onPointerOver={onPointerOver}
+        onPointerOut={onPointerOut}
+        ref={(m) => {
+          if (m) materialRef.current = m.material as THREE.ShaderMaterial;
+        }}
+      />
+      {glow && (
+        <mesh
+          rotation={[Math.PI / 2, 0, 0]}
+          position={[0, 0, (height + 2) / 2]}
+          geometry={glowGeometry}
+          material={glowMaterial}
+        />
+      )}
+    </group>
+  );
+}
+
 function Marker({ name, lngLat, onSelectName, onClearSelection, isSelected, radius = 3 }) {
   const [hovered, setHovered] = useState(false);
   const [x, y] = useMemo(() => projection(lngLat), [lngLat]);
+  const isLocal = useMemo(() => ["CMA", "HKSTP", "BOCDSS", "BOCYH"].includes(name), [name]);
+  const pillarHeight = (name === "Hong Kong" || name === "Macau") ? 80 : 20;
+  const baseRadius = radius && radius > 0 ? (name !== "Hong Kong" && name !== "Macau") ? 0.02: radius : (isLocal ? 1.0 : 1.2);
+  const pillarRadius = baseRadius * (hovered ? 1.3 : 1.0);
+  const top = hovered ? "#2291ff" : (isSelected ? "rgb(250, 148, 53)" : "rgb(255, 0, 0)");
+  const bottom = hovered ? "#66c2ff" : "#ffcf99";
   return (
     <group position={[x, -y, 5]}>
-      <mesh
+      <GradientPillar
+        height={pillarHeight}
+        radius={pillarRadius}
+        topColor={top}
+        bottomColor={bottom}
+        opacity={100}
+        glow={true}
+        glowColor="#2f7cff"
+        glowScale={hovered ? 1.6 : 1.4}
+        glowStrength={hovered ? 1.2 : 0.8}
         onClick={(e) => { e.stopPropagation(); onSelectName?.(name); }}
         onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
         onPointerOut={(e) => { e.stopPropagation(); setHovered(false); }}
-      >
-        <sphereGeometry args={[radius, 32, 32]} />
-        <meshStandardMaterial
-          color={isSelected ? "rgb(250, 148, 53)" : hovered ? "rgb(194, 60, 60)" : "rgb(255, 0, 0)"}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-      {hovered && (
+      />
+      {(hovered || isSelected) && (
         <Html
           center
-          position={[0, 0, 1]}
+          position={[0, 0, 2]}
           style={{
             font: "12px/1.2 system-ui",
             color: "#fff",
@@ -157,7 +270,6 @@ function Marker({ name, lngLat, onSelectName, onClearSelection, isSelected, radi
           {name}
         </Html>
       )}
-      {/* In detail mode we render furniture separately; keep marker simple */}
     </group>
   );
 }
@@ -195,40 +307,50 @@ function Markers({ onSelectName, onClearSelection, selectedName }) {
           onSelectName={onSelectName}
           onClearSelection={onClearSelection}
           isSelected={selectedName === p.name}
-          radius={selectedName === "Hong Kong" ? 0.07 : selectedName === "Macau" ? 0.03 : selectedName === "China"? 3}
+          radius={p.name === "Hong Kong" || p.name === "Macau" ? 1.2 : 1.0}
         />
       ))}
     </group>
   );
 }
 
-function MapScene({ geojson, controlsRef, onSelectName, selectedName }) {
+function MapScene({ geojson, controlsRef, onSelectName, selectedName, region }) {
   const mapGroupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
 
   useEffect(() => {
-    // Center the orbit controls on the map's bounding sphere
     if (!mapGroupRef.current || !controlsRef?.current) return;
-    // Wait for children to mount
     const id = requestAnimationFrame(() => {
-      const box = new THREE.Box3().setFromObject(mapGroupRef.current!);
+      const group = mapGroupRef.current!;
+      // Compute current bounds
+      const box = new THREE.Box3().setFromObject(group);
       const sphere = new THREE.Sphere();
       box.getBoundingSphere(sphere);
-      const center = sphere.center;
-      // Set controls target and camera position
-      controlsRef.current.target.copy(center);
+      const center = sphere.center.clone();
+
+      // Recenter group so the map lies at origin (XY), aligning to grid center
+      group.position.set(group.position.x - center.x, group.position.y - center.y, group.position.z);
+
+      // Recompute bounds after recenter
+      const box2 = new THREE.Box3().setFromObject(group);
+      const sphere2 = new THREE.Sphere();
+      box2.getBoundingSphere(sphere2);
+      const newCenter = sphere2.center;
+
+      // Update controls target and camera relative to new center
+      controlsRef.current.target.copy(newCenter);
       controlsRef.current.update();
 
-      camera.position.set(center.x, center.y + sphere.radius * 0.6, center.z + sphere.radius * 2.2);
-      camera.near = Math.max(0.1, sphere.radius / 100);
-      camera.far = Math.max(1000, sphere.radius * 100);
+      camera.position.set(newCenter.x, newCenter.y + sphere2.radius * 0.6, newCenter.z + sphere2.radius * 2.2);
+      camera.near = Math.max(0.1, sphere2.radius / 100);
+      camera.far = Math.max(1000, sphere2.radius * 100);
       camera.updateProjectionMatrix();
     });
     return () => cancelAnimationFrame(id);
   }, [geojson, controlsRef, camera]);
 
   return (
-    <group ref={mapGroupRef}>
+    <group ref={mapGroupRef} scale={region === "Hong Kong" || region === "Macau" ? [6, 6, 1] : [1, 1, 1]}>
       {geojson.features.map((feature, i) => (
         <Region
           key={i}
@@ -308,18 +430,74 @@ export default function Map3DComponent() {
       <div style={{ position: "absolute", top: 16, left: 16, zIndex: 10, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "8px 12px", borderRadius: 8 }}>
         Selected: {selectedLabel ?? "(none)"} {selectedMeshName ? `• Mesh: ${selectedMeshName}` : ""}
       </div>
-      <Canvas camera={{ position: [1500, 500, 800], fov: 45 }}>
+      <Canvas camera={{ position: [33.4, -202.9, 447.9], fov: 45 }}>
+      <SceneBackground color="rgb(1, 7, 22)" />
+      <GridBackground
+        options={{
+          position: new THREE.Vector3(0, 0, -1),
+          gridSize: (currentRegion === "Hong Kong" || currentRegion === "Macau") ? 40 : 12000,
+          gridDivision: (currentRegion === "Hong Kong" || currentRegion === "Macau") ?8:400,
+          gridColor: 0x1f3b6b,
+          shapeSize: 0,
+          shapeColor: 0x2f5fa9,
+          pointSize: 2.0,
+          pointColor: 0x4aa3ff,
+          pointLayout: (currentRegion === "Hong Kong" || currentRegion === "Macau") ?{ row: 32, col: 32 }:{ row: 1600, col: 1600 },
+          pointBlending: THREE.AdditiveBlending,
+          diffuse: true,
+          diffuseSpeed: 10,
+          diffuseColor: 0x00ffff,
+          diffuseWidth: 30,
+          diffuseDir: 0,
+          adaptivePointSize: true,
+          minPointSize:  (currentRegion === "Hong Kong" || currentRegion === "Macau") ?0.1:1.5,
+          maxPointSize: 5
+        }}
+      />
       <ambientLight intensity={0.5} />
       <directionalLight position={[100, 100, 200]} intensity={0.8} />
       {mode === "map" ? (
-        <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} />
+        <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} />
       ) : (
         <FurnitureDetail controlsRef={controlsRef} onMeshSelected={setSelectedMeshName} />
       )}
+      <CameraInit
+        controlsRef={controlsRef}
+        initial={{ position: [33.4, -202.9, 447.9], radius: 494.5, alphaDeg: 1.0, betaDeg: 116.2 }}
+      />
       <OrbitControls ref={controlsRef} enableDamping dampingFactor={0.08} />
       </Canvas>
     </div>
   );
+}
+
+
+function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { position: [number, number, number]; radius: number; alphaDeg: number; betaDeg: number } }) {
+  const { camera } = useThree();
+  const did = useRef(false);
+  useEffect(() => {
+    if (did.current) return;
+    const raf = requestAnimationFrame(() => {
+      if (!controlsRef?.current) return;
+      const { position, radius, alphaDeg, betaDeg } = initial;
+      const alpha = THREE.MathUtils.degToRad(alphaDeg);
+      const beta = THREE.MathUtils.degToRad(betaDeg);
+      const sinPhi = Math.sin(beta);
+      const cosPhi = Math.cos(beta);
+      const sinTheta = Math.sin(alpha);
+      const cosTheta = Math.cos(alpha);
+      const dx = radius * sinPhi * sinTheta;
+      const dy = radius * cosPhi;
+      const dz = radius * sinPhi * cosTheta;
+      const target = new THREE.Vector3(position[0] - dx, position[1] - dy, position[2] - dz);
+      camera.position.set(position[0], position[1], position[2]);
+      controlsRef.current.target.copy(target);
+      controlsRef.current.update();
+      did.current = true;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [controlsRef, camera, initial]);
+  return null;
 }
 
 function FurnitureDetail({ controlsRef, onMeshSelected }) {
@@ -351,5 +529,182 @@ function FurnitureDetail({ controlsRef, onMeshSelected }) {
         }}
       />
     </group>
+  );
+}
+
+interface GridOptions {
+  position: THREE.Vector3 | [number, number, number];
+  gridSize: number;
+  gridDivision: number;
+  gridColor: number;
+  shapeSize: number;
+  shapeColor: number;
+  pointSize: number;
+  pointColor: number;
+  pointLayout: { row: number; col: number };
+  pointBlending: THREE.Blending;
+  diffuse: boolean;
+  diffuseSpeed: number;
+  diffuseColor: number;
+  diffuseWidth: number;
+  diffuseDir?: number;
+  adaptivePointSize?: boolean;
+  minPointSize?: number;
+  maxPointSize?: number;
+}
+
+const toVector3 = (pos: GridOptions["position"]): [number, number, number] => {
+  return Array.isArray(pos) ? (pos as [number, number, number]) : [pos.x, pos.y, pos.z];
+};
+
+function SceneBackground({ color = "#0b2d5e" }: { color?: string }) {
+  const { scene } = useThree();
+  useEffect(() => {
+    const prev = scene.background;
+    scene.background = new THREE.Color(color);
+    return () => {
+      scene.background = prev;
+    };
+  }, [scene, color]);
+  return null;
+}
+
+function GridBackground({ options }: { options: GridOptions }) {
+  const { camera } = useThree();
+  const groupRef = useRef<THREE.Group>(null);
+  const pointsGeometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
+    const rows = Math.max(2, options.pointLayout.row);
+    const cols = Math.max(2, options.pointLayout.col);
+    const size = options.gridSize;
+    const positions = new Float32Array(rows * cols * 3);
+    const x0 = -size / 2;
+    const z0 = -size / 2;
+    const dx = size / (cols - 1);
+    const dz = size / (rows - 1);
+    let idx = 0;
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) {
+        const x = x0 + j * dx;
+        const z = z0 + i * dz;
+        positions[idx++] = x;
+        positions[idx++] = 0.2; // y (XZ -> rotate to XY)
+        positions[idx++] = z;
+      }
+    }
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    return geo;
+  }, [options.pointLayout.row, options.pointLayout.col, options.gridSize]);
+
+  const shaderMaterial = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: options.pointBlending ?? THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uBaseColor: { value: new THREE.Color(options.pointColor) },
+        uDiffuseColor: { value: new THREE.Color(options.diffuseColor) },
+        uSize: { value: options.pointSize },
+        uWidth: { value: options.diffuseWidth },
+        uSpeed: { value: options.diffuseSpeed },
+        uEnable: { value: options.diffuse ? 1.0 : 0.0 },
+        uDir: { value: options.diffuseDir ?? 0.0 }
+      },
+      vertexShader: `
+        uniform float uSize;
+        varying vec2 vPos;
+        void main() {
+          vPos = position.xz;
+          gl_PointSize = uSize;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        precision mediump float;
+        varying vec2 vPos;
+        uniform vec3 uBaseColor;
+        uniform vec3 uDiffuseColor;
+        uniform float uTime;
+        uniform float uWidth;
+        uniform float uSpeed;
+        uniform float uEnable;
+        uniform float uDir;
+        void main() {
+          vec2 p = gl_PointCoord.xy * 2.0 - 1.0;
+          float m = 1.0 - smoothstep(0.95, 1.0, length(p));
+          float alpha = 0.8 * m;
+          vec3 col = uBaseColor;
+
+          if (uEnable > 0.5) {
+            float r = mod(uTime * uSpeed, 2000.0);
+            float d;
+            if (uDir < 0.5) {
+              d = length(vPos);
+            } else if (uDir < 1.5) {
+              d = abs(vPos.x);
+            } else {
+              d = abs(vPos.y);
+            }
+            float glow = smoothstep(r - uWidth, r, d) * (1.0 - smoothstep(r, r + uWidth, d));
+            col = mix(col, uDiffuseColor, glow);
+            alpha = mix(alpha, 1.0 * m, glow);
+          }
+
+          gl_FragColor = vec4(col, alpha);
+        }
+      `
+    });
+  }, [options.pointBlending, options.pointColor, options.diffuseColor, options.pointSize, options.diffuseWidth, options.diffuseSpeed, options.diffuse, options.diffuseDir]);
+
+  useFrame((_, delta) => {
+    shaderMaterial.uniforms.uTime.value += delta * 60.0;
+    // adaptive point size based on camera distance
+    if (options.adaptivePointSize && groupRef.current) {
+      const worldPos = new THREE.Vector3();
+      groupRef.current.getWorldPosition(worldPos);
+      const dist = camera.position.distanceTo(worldPos);
+      const minS = options.minPointSize ?? 1.5;
+      const maxS = options.maxPointSize ?? 5.0;
+      const base = options.pointSize;
+      const size = THREE.MathUtils.clamp(base * (800 / (dist + 1)), minS, maxS);
+      shaderMaterial.uniforms.uSize.value = size;
+    }
+  });
+
+  const gridColor = useMemo(() => new THREE.Color(options.gridColor), [options.gridColor]);
+
+  return (
+    <group ref={groupRef} position={toVector3(options.position)} rotation={[Math.PI / 2, 0, 0]} renderOrder={-1}>
+      {/* Grid lines */}
+      {/* @ts-ignore */}
+      <gridHelper args={[options.gridSize, options.gridDivision, gridColor, gridColor]} />
+      {/* Points diffusion layer */}
+      {/* @ts-ignore */}
+      <points geometry={pointsGeometry} material={shaderMaterial} />
+    </group>
+  );
+}
+
+function CameraHUD({ controlsRef }: { controlsRef: any }) {
+  const { camera } = useThree();
+  const [info, setInfo] = useState({ x: 0, y: 0, z: 0, r: 0, alpha: 0, beta: 0 });
+  useFrame(() => {
+    const target = controlsRef?.current?.target ?? new THREE.Vector3(0, 0, 0);
+    const delta = new THREE.Vector3().copy(camera.position).sub(target);
+    const sph = new THREE.Spherical().setFromVector3(delta);
+    setInfo({
+      x: Number(camera.position.x.toFixed(1)),
+      y: Number(camera.position.y.toFixed(1)),
+      z: Number(camera.position.z.toFixed(1)),
+      r: Number(sph.radius.toFixed(1)),
+      alpha: Number(THREE.MathUtils.radToDeg(sph.theta).toFixed(1)),
+      beta: Number(THREE.MathUtils.radToDeg(sph.phi).toFixed(1))
+    });
+  });
+  return (
+    <Html transform={false} style={{ position: "absolute", top: 16, right: 16, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "6px 8px", borderRadius: 6, font: "12px/1.2 system-ui" }}>
+      {`pos: (${info.x}, ${info.y}, ${info.z}) r: ${info.r} α: ${info.alpha}° β: ${info.beta}°`}
+    </Html>
   );
 }
