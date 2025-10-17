@@ -10,7 +10,8 @@ import React from 'react';
 function ThreeDApp() {
     return (
     <div>
-        <GeoJsonBabylonMap/>
+       <div style={{ width: "100%", height: "100vh" }}><Map3DComponent/></div>
+        
         <p>This is a basic React application.</p>
     </div>
     );
