@@ -38,7 +38,7 @@ function FurnitureModel({ position = [0, 0, 10], scale = 0.08 }) {
 // (safe to leave as a comment if not desired)
 // (useGLTF as any).preload?.("/3dmodel/Furniture.glb");
 
-function Region({ feature, onClick, isSelected, onSelectName }) {
+function Region({ feature, onClick, isSelected, onSelectName, hoverScaleZ = 3 }: { feature: any; onClick?: (f: any) => void; isSelected?: boolean; onSelectName?: (name: string) => void; hoverScaleZ?: number }) {
   const shapes = useMemo(() => getShapes(feature), [feature]);
   const geometries = useMemo(() => {
     return shapes.map(
@@ -88,7 +88,7 @@ function Region({ feature, onClick, isSelected, onSelectName }) {
         <mesh
           key={idx}
           geometry={geometry}
-          scale={[1, 1, hovered ? 3 : 1]}
+          scale={[1, 1, hovered ? hoverScaleZ : 1]}
           onClick={() => { onClick?.(feature); onSelectName?.(feature.properties?.name ?? "Unknown"); }}
           onPointerOver={() => setHovered(true)}
           onPointerOut={() => setHovered(false)}
@@ -317,6 +317,10 @@ function Markers({ onSelectName, onClearSelection, selectedName }) {
 function MapScene({ geojson, controlsRef, onSelectName, selectedName, region }) {
   const mapGroupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
+  const [mapRadius, setMapRadius] = useState(0);
+  const hoverScaleZ = useMemo(() => {
+    return THREE.MathUtils.clamp(1.5 + mapRadius / 800, 1.5, 6.0);
+  }, [mapRadius]);
 
   useEffect(() => {
     if (!mapGroupRef.current || !controlsRef?.current) return;
@@ -336,6 +340,7 @@ function MapScene({ geojson, controlsRef, onSelectName, selectedName, region }) 
       const sphere2 = new THREE.Sphere();
       box2.getBoundingSphere(sphere2);
       const newCenter = sphere2.center;
+      setMapRadius(sphere2.radius);
 
       // Update controls target and camera relative to new center
       controlsRef.current.target.copy(newCenter);
@@ -358,6 +363,7 @@ function MapScene({ geojson, controlsRef, onSelectName, selectedName, region }) 
           onClick={undefined}
           onSelectName={onSelectName}
           isSelected={selectedName === feature.properties.name}
+          hoverScaleZ={hoverScaleZ}
         />
       ))}
       <Markers onSelectName={onSelectName} selectedName={selectedName} />
@@ -435,14 +441,14 @@ export default function Map3DComponent() {
       <GridBackground
         options={{
           position: new THREE.Vector3(0, 0, -1),
-          gridSize: (currentRegion === "Hong Kong" || currentRegion === "Macau") ? 40 : 12000,
-          gridDivision: (currentRegion === "Hong Kong" || currentRegion === "Macau") ?8:400,
+          gridSize: (currentRegion === "Hong Kong" || currentRegion === "Macau") ? 160 : 12000,
+          gridDivision: (currentRegion === "Hong Kong" || currentRegion === "Macau") ?32:400,
           gridColor: 0x1f3b6b,
           shapeSize: 0,
           shapeColor: 0x2f5fa9,
           pointSize: 2.0,
           pointColor: 0x4aa3ff,
-          pointLayout: (currentRegion === "Hong Kong" || currentRegion === "Macau") ?{ row: 32, col: 32 }:{ row: 1600, col: 1600 },
+          pointLayout: (currentRegion === "Hong Kong" || currentRegion === "Macau") ?{ row: 32*4, col: 32*4 }:{ row: 1600, col: 1600 },
           pointBlending: THREE.AdditiveBlending,
           diffuse: true,
           diffuseSpeed: 10,
@@ -503,6 +509,8 @@ function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { pos
 function FurnitureDetail({ controlsRef, onMeshSelected }) {
   const { camera } = useThree();
   const gltf: any = useGLTF("/3dmodel/Furniture.glb");
+  const groupRef = useRef<THREE.Group>(null);
+  const [glow, setGlow] = useState<{ center: [number, number, number]; radius: number } | null>(null);
 
   useEffect(() => {
     const box = new THREE.Box3().setFromObject(gltf.scene);
@@ -519,15 +527,28 @@ function FurnitureDetail({ controlsRef, onMeshSelected }) {
   }, [gltf, controlsRef, camera]);
 
   return (
-    <group>
+    <group ref={groupRef}>
       <primitive
         object={gltf.scene}
         onPointerDown={(e) => {
           e.stopPropagation();
-          const meshName = (e.object as any)?.name || "Unnamed";
+          const obj = e.object as THREE.Object3D;
+          const meshName = (obj as any)?.name || "Unnamed";
           onMeshSelected?.(meshName);
+          // Compute world bounding sphere of selected object
+          const box = new THREE.Box3().setFromObject(obj);
+          const sphere = new THREE.Sphere();
+          box.getBoundingSphere(sphere);
+          const worldCenter = sphere.center.clone();
+          // Convert to local position relative to FurnitureDetail group
+          const localCenter = worldCenter.clone();
+          if (groupRef.current) {
+            groupRef.current.worldToLocal(localCenter);
+          }
+          setGlow({ center: [localCenter.x, localCenter.y, localCenter.z], radius: sphere.radius });
         }}
       />
+      {glow && <GlowShell center={glow.center} radius={glow.radius} />}
     </group>
   );
 }
@@ -706,5 +727,55 @@ function CameraHUD({ controlsRef }: { controlsRef: any }) {
     <Html transform={false} style={{ position: "absolute", top: 16, right: 16, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "6px 8px", borderRadius: 6, font: "12px/1.2 system-ui" }}>
       {`pos: (${info.x}, ${info.y}, ${info.z}) r: ${info.r} α: ${info.alpha}° β: ${info.beta}°`}
     </Html>
+  );
+}
+
+function GlowShell({ center, radius, color = new THREE.Color(0x4aa3ff), strength = 1.0 }: { center: [number, number, number]; radius: number; color?: THREE.Color | string | number; strength?: number }) {
+  const material = useMemo(() => {
+    const col = new THREE.Color(color as any);
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: col },
+        uStrength: { value: strength }
+      },
+      vertexShader: `
+        varying vec3 vWorldPos;
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldPos = worldPos.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        precision mediump float;
+        varying vec3 vWorldPos;
+        varying vec3 vNormal;
+        uniform vec3 uColor;
+        uniform float uStrength;
+        uniform float uTime;
+        void main() {
+          vec3 viewDir = normalize(cameraPosition - vWorldPos);
+          float fresnel = pow(1.0 - max(dot(normalize(vNormal), viewDir), 0.0), 3.0);
+          float pulse = 0.85 + 0.15 * sin(uTime * 2.0);
+          float alpha = fresnel * uStrength * pulse;
+          gl_FragColor = vec4(uColor * alpha, alpha);
+        }
+      `
+    });
+  }, [color, strength]);
+  useFrame((_, delta) => {
+    material.uniforms.uTime.value += delta;
+  });
+  return (
+    <mesh position={center as any} material={material}>
+      <sphereGeometry args={[radius * 1.08, 48, 48]} />
+    </mesh>
   );
 }
