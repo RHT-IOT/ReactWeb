@@ -116,41 +116,6 @@ function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }) {
   );
 }
 
-function Table_disp({deviceMap, device}){
-  if(!deviceMap || !device || device.length === 0){
-    return(<pre> No data Yet </pre>);
-  }
-  const rows = device.flatMap(dev => {
-    const entry = deviceMap[dev];
-    if(!entry) return [];
-    const ts = entry["Timestamp"].split(".")[0].replace("T", " ");
-    return Object.entries(entry)
-      .filter(([key]) => key !== "Timestamp" && key !== "DeviceID" && key !== "DeviceType")
-      .map(([key, value]) => ({ device: dev, key, value: String(value), ts }));
-  });
-  return(
-    <table border="1" style={{ borderCollapse: "collapse", width: "100%" }}>
-      <thead>
-        <tr>
-          <th>Device</th>
-          <th>Variable</th>
-          <th>Value</th>
-          <th>Timestamp</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, idx) => (
-          <tr key={`${r.device}-${r.key}-${idx}`}>
-            <td>{r.device}</td>
-            <td>{r.key}</td>
-            <td>{r.value}</td>
-            <td>{r.ts}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
 
 // Gauge card to visualize a single numeric field
 function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2' }: any) {
@@ -543,24 +508,9 @@ function LoginApp() {
     window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
   };
 
-  const refresh_send = {
-    "Records": [
-      {
-        "eventName": "REFRESH"
-      }
-    ]
-  };
 
-  const Refresh = () => {
-    return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/Refresh", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${auth.user?.id_token}`,
-      },
-      body: JSON.stringify(refresh_send),
-    })
-  };
+
+
 
   if (auth.isLoading) {
     return <div>Loading...</div>;
@@ -596,6 +546,7 @@ function LoginApp() {
             <option value="mode-dark">Dark</option>
           </select>
           <button className="brand-button button-outline" onClick={() => signOutRedirect()}>Sign out</button>            
+          { auth.user?.profile.email === "natsense00@gmail.com" ? <button className="brand-button button-outline" onClick={() => window.location.replace('/admin')}>admin</button> :<></>}           
         </div>
       </div>
       {/* Friendly hint */}
@@ -655,12 +606,6 @@ function LoginApp() {
           <ExportCSVButton data={timeSeriesData} filename={IMEI + "_" + startDateTime.split(".")[0].replace("T", " ") + "_to_" + endDateTime.split(".")[0].replace("T", " ") + ".csv"} />
         </div>
       </div>
-      {auth.user?.profile.email === "natsense00@gmail.com" ? 
-      <div className="panel" style={{ marginTop: 16 }}>
-        <div className="section-title">Refresh sdid and dsid</div>
-        <button className="brand-button button-outline" onClick={Refresh}>Refresh</button>
-        </div> 
-      : <></>}
     </div>
   );
 }
