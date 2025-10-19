@@ -2,6 +2,69 @@
 
 import { useAuth } from "react-oidc-context";
 import { useEffect, useState,useId } from "react";
+
+BigInt.prototype.toJSON = function() {
+  return this.toString();
+};
+function AccessManager({ data }) {
+  const { email, Location, DevList } = data;
+
+  // State: which email has which selections
+  const [access, setAccess] = useState(
+    email.reduce((acc, e) => {
+      acc[e] = {}; // each email has a map of location -> selected devices
+      return acc;
+    }, {})
+  );
+
+  const toggleDevice = (user, loc, device) => {
+    setAccess(prev => {
+      const userAccess = { ...prev[user] };
+      const locAccess = new Set(userAccess[loc] || []);
+      if (locAccess.has(device)) {
+        locAccess.delete(device);
+      } else {
+        locAccess.add(device);
+      }
+      userAccess[loc] = Array.from(locAccess);
+      return { ...prev, [user]: userAccess };
+    });
+  };
+
+  return (
+    <div style={{ display: "flex", gap: "24px" }}>
+      {email.map(user => (
+        <div key={user} style={{ border: "1px solid #ccc", padding: 12 }}>
+          <h3>{user}</h3>
+          {Location.map((loc, idx) => (
+            <div key={loc} style={{ marginBottom: 8 }}>
+              <strong>{loc}</strong>
+              <div style={{ marginLeft: 12 }}>
+                {DevList[idx].length === 0 ? (
+                  <em>No devices</em>
+                ) : (
+                  DevList[idx].map(dev => (
+                    <label key={dev} style={{ display: "block" }}>
+                      <input
+                        type="checkbox"
+                        checked={access[user][loc]?.includes(dev) || false}
+                        onChange={() => toggleDevice(user, loc, dev)}
+                      />
+                      {dev}
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+      <pre style={{ flex: 1, background: "#f9f9f9", padding: 12 }}>
+        {JSON.stringify(access, null, 2)}
+      </pre>
+    </div>
+  );
+}
 function ThreeTextBoxRow({values,setValues}) {
 
   const handleChange = (index, newValue) => {
@@ -93,6 +156,7 @@ export default function AdminPage() {
   const auth = useAuth();
 
   const[devices, setDevices] = useState();
+  const[userDev, setUserDev] = useState();
   const [sensorBoxModel, setSensorBoxModel] = useState(["", "", ""]);
 
   const refresh_send = {
@@ -108,6 +172,23 @@ export default function AdminPage() {
       },
       body: JSON.stringify(refresh_send),
     });
+  };
+  const GetDevUser = async() => {
+     await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/showUserDevice", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${auth.user?.id_token}`,
+      }
+    })
+    .then((res) => res.json())
+    .then((data) => {
+      console.log("Raw API response:", data);
+      const parsed = typeof data.body === "string" ? JSON.parse(data.body) : data.body;
+      setUserDev(parsed);
+    })
+    .catch((err) => console.error(err));
+    return;
   };
   const getDevList = async() =>{
     if (!auth?.user?.id_token) return;
@@ -131,7 +212,7 @@ export default function AdminPage() {
   }
   const AddNewIMEIDev = async () => {
     const newDevice = {
-      DeviceID: Number(sensorBoxModel[0]), // convert to number if needed
+      DeviceID: BigInt(sensorBoxModel[0]), // convert to number if needed
       Location: sensorBoxModel[1],
       Coordinate: sensorBoxModel[2]
         .split(", ") // assume user types "22.21,113.54"
@@ -197,7 +278,21 @@ export default function AdminPage() {
           <button className="brand-button button-outline" onClick={async() => {await AddNewIMEIDev();await getDevList();}} style={{marginTop: 16}}>Add New IMEI Dev</button>
         </div>
       </div>
-      
+      <div className="panel" style={{ marginTop: 16 }}>
+        <div className="section-title">Refresh DevUser</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button className="brand-button button-outline" onClick={GetDevUser}>Refresh</button>
+        <AccessManager data = {userDev}/>
+        {/* {userDev && (
+          <div>
+            <p>Email: {userDev.email}</p>
+            <p>Location: {userDev.Location}</p>
+            <p>Devices: {userDev.DevList.join(", ")}</p>
+          </div>
+        )} */}
+
+        </div>      
+      </div>
     </div>
   );
 }
