@@ -3,44 +3,16 @@ import { useEffect, useState, useRef } from "react";
 import { useAuth } from "react-oidc-context";
 import Form from 'react-bootstrap/Form';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, ArcElement } from 'chart.js';
-import { Line, Doughnut } from 'react-chartjs-2';
+import { Line } from 'react-chartjs-2';
+import { LatestDashboard } from "../components/DashboardGauges";
+import { getIMEIList, getLatestDP, getDPFromTime, createLatestDpPoller } from "../lib/aws";
 import 'chartjs-adapter-date-fns';
 import DateTimeRangePickerValue from "../datepicker";
 import dayjs from "dayjs";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, ArcElement);
 
-// Plugin to draw the value (and optional unit) in the center of the doughnut
-const centerTextPlugin: any = {
-  id: 'centerText',
-  afterDraw(chart: any) {
-    const meta = chart.getDatasetMeta(0);
-    if (!meta || !meta.data || meta.data.length === 0) return;
-    const arc = meta.data[0];
-    const x = arc.x;
-    const y = arc.y;
-    const opts = chart.options?.plugins?.centerText || {};
-    const value = chart.data?.datasets?.[0]?.data?.[0];
-    if (value === undefined || value === null) return;
-
-    const ctx = chart.ctx;
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const fontSize = opts.fontSize || 20;
-    const fontFamily = opts.fontFamily || 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
-    ctx.font = `600 ${fontSize}px ${fontFamily}`;
-    ctx.fillStyle = opts.color || '#111';
-    ctx.fillText(String(value), x, y);
-    if (opts.unit) {
-      ctx.font = `400 ${Math.round(fontSize * 0.65)}px ${fontFamily}`;
-      ctx.fillStyle = opts.subColor || '#555';
-      ctx.fillText(String(opts.unit), x, y + fontSize * 0.9);
-    }
-    ctx.restore();
-  }
-};
-ChartJS.register(centerTextPlugin);
+// Center text plugin is provided by shared DashboardGauges; local plugin removed.
 
 function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
   const handleSelect=(e)=>{
@@ -52,12 +24,16 @@ function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
   }
   return (
     <Form.Select className="brand-select" aria-label="Default select example" onChange={handleSelect}>
-      <option value="">Choose your IMEI code</option>
-       {IMEI.map((opt, index) => (
-          <option key={index} value={opt}>
-            {opt}
-          </option>
-        ))}
+      <option value="">Choose location</option>
+       {IMEI.map((opt, index) => {
+          const label = typeof opt === 'string' ? opt : (opt?.Location ?? String(opt?.DeviceID ?? ''));
+          const value = typeof opt === 'string' ? opt : String(opt?.DeviceID ?? '');
+          return (
+            <option key={index} value={value}>
+              {label}
+            </option>
+          );
+        })}
     </Form.Select>
   );
 }
@@ -116,98 +92,7 @@ function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }) {
   );
 }
 
-
-// Gauge card to visualize a single numeric field
-function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2' }: any) {
-  const v = Math.max(0, Math.min(Number(value), Number(max)));
-  const remainder = Math.max(0, Number(max) - v);
-  const data = {
-    labels: ['Value', 'Remaining'],
-    datasets: [{
-      label: title,
-      data: [v, remainder],
-      backgroundColor: [color, '#d7d9dd'],
-      hoverOffset: 4,
-      borderWidth: 0,
-    }]
-  };
-  const optionsGauge: any = {
-    responsive: true,
-    rotation: -125,
-    circumference: Math.PI * 80,
-    cutout: '60%',
-    plugins: {
-      legend: { display: false },
-      tooltip: { enabled: false },
-      title: { display: false },
-      centerText: { unit, color: '#111', subColor: '#666', fontSize: 20 }
-    },
-  };
-  return (
-    <div className="panel" style={{ padding: 12 }}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
-      <div style={{ height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Doughnut data={data} options={optionsGauge} />
-      </div>
-    </div>
-  );
-}
-
-// Dashboard of gauges for latest DP entries
-function LatestDashboard({ deviceMap, device, dataType }: any) {
-  if (!deviceMap || !device || device.length === 0) {
-    return <pre>No latest data yet</pre>;
-  }
-  const FIELD_RANGES: Record<string, { max: number; unit?: string; color?: string }> = {
-    DSI: { max: 31, unit: 'Days', color: '#f2a007' },
-    DSO: { max: 31, unit: 'Days', color: '#ff4d57' },
-    DPO: { max: 31, unit: 'Days', color: '#11a36f' },
-    CurrentRatio: { max: 5, unit: '%', color: '#2b6ea6' },
-    Humidity: { max: 100, unit: '%', color: '#26b6b2' },
-    Temperature: { max: 50, unit: '°C', color: '#ff9f40' },
-    CO2: { max: 2000, unit: 'ppm', color: '#9966ff' },
-    PM2_5: { max: 200, unit: 'µg/m³', color: '#4bc0c0' },
-    PM10: { max: 200, unit: 'µg/m³', color: '#36a2eb' },
-    Battery: { max: 100, unit: '%', color: '#2ecc71' },
-  };
-  const inferRange = (key: string, value: number) => {
-    const preset = FIELD_RANGES[key];
-    if (preset) return preset;
-    const k = key.toLowerCase();
-    if (k.includes('hum')) return { max: 100, unit: '%', color: '#26b6b2' };
-    if (k.includes('temp')) return { max: 50, unit: '°C', color: '#ff9f40' };
-    if (k.includes('ratio') || k.includes('%')) return { max: 100, unit: '%', color: '#2b6ea6' };
-    if (k.includes('co2')) return { max: 2000, unit: 'ppm', color: '#9966ff' };
-    if (k.includes('pm')) return { max: 200, unit: 'µg/m³', color: '#4bc0c0' };
-    return { max: Math.max(100, Math.ceil(value * 1.5) || 100), unit: '', color: '#26b6b2' };
-  };
-
-  const cards: any[] = [];
-  device.forEach((dev: string) => {
-    const entry = deviceMap[dev];
-    if (!entry) return;
-    const ts = entry["Timestamp"]?.split(".")[0]?.replace("T", " ");
-    const keys = Object.keys(entry).filter(k => !["Timestamp", "DeviceID", "DeviceType"].includes(k) && typeof entry[k] === 'number');
-    const selected = dataType && dataType.length > 0 ? keys.filter(k => dataType.includes(k)) : keys;
-    selected.forEach(k => {
-      const { max, unit, color } = inferRange(k, Number(entry[k]));
-      cards.push({ title: `${dev} • ${k}`, value: Number(entry[k]), max, unit, color, ts });
-    });
-  });
-
-  if (cards.length === 0) return <pre>No numeric fields to display</pre>;
-
-  return (
-    <div>
-      <div style={{ marginBottom: 8, opacity: 0.7 }}>Latest timestamp: {cards[0].ts || '-'}</div>
-      <div className="dashboard-grid">
-        {cards.map((c, idx) => (
-          <GaugeCard key={idx} title={c.title} value={c.value} max={c.max} unit={c.unit} color={c.color} />
-        ))}
-      </div>
-    </div>
-  );
-}
+// Using shared gauges now; removed inline GaugeCard and LatestDashboard.
 
 const ExportCSVButton = ({ data, filename = "export.csv" }) => {
   const convertToCSV = (arr) => {
@@ -283,7 +168,7 @@ function LoginApp() {
   const [dataType, setDataType] = useState<string[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState([]);
   const [lastRefresh, setLastRefresh] = useState<string>("");
-  const pollerRef = useRef<number | null>(null);
+  const pollerRef = useRef<any>(null);
 
   // Theme state
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-b');
@@ -384,82 +269,64 @@ function LoginApp() {
 
     const callApi = async (email) => {
       if(auth.isAuthenticated && email){
-        const response = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getIMEI", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" , 
-            "Authorization": `Bearer ${auth.user?.id_token}`,},
-          body: JSON.stringify({ email })
-        });
-
-        const data = await response.json();
-        const arr =  JSON.parse(data?.body);
-        const flat = arr.flat(); 
-        setIMEI_ARR(flat);
+        try {
+          const list = await getIMEIList(email, auth.user?.id_token as string);
+          setIMEI_ARR(list);
+        } catch (err) {
+          console.error("getIMEIList error:", err);
+        }
       };
     }
     callApi(auth.user?.profile.email);
   }, [auth.isAuthenticated, auth.user?.access_token,auth.user?.profile.email,auth.user?.id_token]);
   
-  const getLatestDp = () => {
-    return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getLatestDP", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${auth.user?.id_token}`,
-      },
-      body: JSON.stringify({ IMEI }),
-    })
-      .then(res => res.json())
-      .then(data => {
-        const temp = JSON.parse(data.body);
-        const map = {};
-        const dev = {};
-        let idx = 0;
-        for (const item of temp) {
-          dev[idx] = item.DeviceType;
-          map[item.DeviceType] = item;
-          idx++;
-        }
-        setDeviceMap(map);
-        setDeviceType(dev);
-        setLastRefresh(dayjs().format('YYYY-MM-DD HH:mm:ss'));
-      })
-      .catch(err => console.error("Fetch error:", err));
+  const getLatestDp = async () => {
+    if (!IMEI || !auth.user?.id_token) return;
+    try {
+      const result = await getLatestDP(IMEI, auth.user.id_token);
+      setDeviceMap(result.deviceMap as any);
+      setDeviceType(result.deviceTypes as any);
+      setLastRefresh(dayjs().format('YYYY-MM-DD HH:mm:ss'));
+    } catch (err) {
+      console.error("getLatestDP error:", err);
+    }
   };
 
-  const getDpfromtime = () => {
-    return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getDpFromTime", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${auth.user?.id_token}`,
-      },
-      body: JSON.stringify({ IMEI, startDateTime,endDateTime}),
-    })
-      .then(res => res.json())
-      .then(data => {
-        const temp = JSON.parse(data.body);
-        setDeviceType(temp.deviceTypes || []);
-        setTimeSeriesData(temp.items || []);
-      })
-      .catch(err => console.error("Fetch error:", err));
+  const getDpfromtime = async () => {
+    if (!IMEI || !auth.user?.id_token) return;
+    try {
+      const data = await getDPFromTime(IMEI, startDateTime, endDateTime, auth.user.id_token);
+      setDeviceType(data.deviceTypes || []);
+      setTimeSeriesData(data.items || []);
+    } catch (err) {
+      console.error("getDPFromTime error:", err);
+    }
   };
 
   // Manual auto-refresh: start only when user clicks "Get New Data"
-  const startAutoRefresh = () => {
-    if (!auth.isAuthenticated || !IMEI) return;
+  const startAutoRefresh = async () => {
+    if (!auth.isAuthenticated || !IMEI || !auth.user?.id_token) return;
     if (pollerRef.current) {
-      clearInterval(pollerRef.current);
+      try { pollerRef.current.stop(); } catch {}
       pollerRef.current = null;
     }
-    pollerRef.current = window.setInterval(() => {
-      getLatestDp();
-    }, 5 * 60 * 1000); // 5 minutes
+    const poller = createLatestDpPoller({
+      IMEI,
+      idToken: auth.user.id_token,
+      intervalMs: 5 * 60 * 1000,
+      callback: (result) => {
+        setDeviceMap(result.deviceMap as any);
+        setDeviceType(result.deviceTypes as any);
+        setLastRefresh(dayjs().format('YYYY-MM-DD HH:mm:ss'));
+      },
+    });
+    pollerRef.current = poller;
+    await poller.start();
   };
 
   const stopAutoRefresh = () => {
     if (pollerRef.current) {
-      clearInterval(pollerRef.current);
+      try { pollerRef.current.stop(); } catch {}
       pollerRef.current = null;
     }
   };

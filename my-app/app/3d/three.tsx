@@ -5,6 +5,9 @@ import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Html, useGLTF, useProgress } from "@react-three/drei";
 import * as THREE from "three";
 import * as d3 from "d3-geo";
+import { useAuth } from "react-oidc-context";
+import { LatestDashboard } from "../components/DashboardGauges";
+import { getIMEIList, createLatestDpPoller, DeviceInfo } from "../lib/aws";
 
 const projection = d3.geoMercator().scale(400).translate([0, 0]);
 
@@ -314,7 +317,46 @@ function Markers({ onSelectName, onClearSelection, selectedName }) {
   );
 }
 
-function MapScene({ geojson, controlsRef, onSelectName, selectedName, region }) {
+// Device pillars rendered from IMEI list coordinates
+function DevicePillar({ device, onSelectIMEI, radius = 2 }: { device: DeviceInfo; onSelectIMEI: (imei: string) => void; radius?: number }) {
+  const [hovered, setHovered] = useState(false);
+  const pos = useMemo(() => {
+    // API provides [lat, lng]; d3 expects [lng, lat]
+    const [lat, lng] = device.Coordinate;
+    const [x, y] = projection([lng, lat]);
+    return [x, -y, 5] as [number, number, number];
+  }, [device.Coordinate]);
+  return (
+    <group position={pos}>
+      <GradientPillar
+        height={hovered ? 80 : 60}
+        radius={radius}
+        glow={true}
+        glowColor="#2f7cff"
+        glowScale={1.5}
+        glowStrength={hovered ? 1.4 : 0.9}
+        onClick={() => onSelectIMEI(String(device.DeviceID))}
+        onPointerOver={() => setHovered(true)}
+        onPointerOut={() => setHovered(false)}
+      />
+      <Html center style={{ pointerEvents: "none", color: "#fff", background: "rgba(0,0,0,0.35)", padding: "2px 6px", borderRadius: 6 }}>
+        {device.Location}
+      </Html>
+    </group>
+  );
+}
+
+function DevicePillars({ devices, onSelectIMEI }: { devices: DeviceInfo[]; onSelectIMEI: (imei: string) => void }) {
+  if (!devices || devices.length === 0) return null;
+  return (
+    <group>
+      {devices.map((d) => (
+        <DevicePillar key={String(d.DeviceID)} device={d} onSelectIMEI={onSelectIMEI} />
+      ))}
+    </group>
+  );
+}
+function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, devices, onSelectIMEI }) {
   const mapGroupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
   const [mapRadius, setMapRadius] = useState(0);
@@ -367,11 +409,13 @@ function MapScene({ geojson, controlsRef, onSelectName, selectedName, region }) 
         />
       ))}
       <Markers onSelectName={onSelectName} selectedName={selectedName} />
+      <DevicePillars devices={devices} onSelectIMEI={onSelectIMEI} />
     </group>
   );
 }
 
-export default function Map3DComponent() {
+export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (name: string | null) => void }) {
+  const auth = useAuth();
   const [geojson, setGeojson] = useState(null);
   const controlsRef = useRef<any>(null);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
@@ -379,6 +423,10 @@ export default function Map3DComponent() {
   const [currentRegion, setCurrentRegion] = useState<string>("China");
   const [mode, setMode] = useState<"map" | "detail">("map");
   const [selectedMeshName, setSelectedMeshName] = useState<string | null>(null);
+  const [imeiList, setImeiList] = useState<DeviceInfo[]>([]);
+  const [IMEI, setIMEI] = useState<string>("");
+  const [deviceMap, setDeviceMap] = useState<any>({});
+  const pollerRef = useRef<any>(null);
 
   // Track region based on selected label (keep region when selecting POIs)
   useEffect(() => {
@@ -429,28 +477,80 @@ export default function Map3DComponent() {
     return () => { cancelled = true; };
   }, [mapFile]);
 
+  // Fetch IMEI list and set default IMEI
+  useEffect(() => {
+    if (!auth.isAuthenticated || !auth.user?.id_token || !auth.user?.profile?.email) return;
+    getIMEIList(auth.user.profile.email, auth.user.id_token)
+      .then(list => { setImeiList(list); setIMEI(String(list?.[0]?.DeviceID || "")); })
+      .catch(err => console.error("3D getIMEIList error:", err));
+  }, [auth.isAuthenticated, auth.user?.id_token, auth.user?.profile?.email]);
+
+  // Start latest DP poller when IMEI available
+  useEffect(() => {
+    if (!IMEI || !auth?.user?.id_token) return;
+    if (pollerRef.current) {
+      try { pollerRef.current.stop(); } catch {}
+      pollerRef.current = null;
+    }
+    const poller = createLatestDpPoller({
+      IMEI,
+      idToken: auth.user.id_token,
+      intervalMs: 5 * 60 * 1000,
+      callback: (result) => {
+        setDeviceMap(result.deviceMap);
+      },
+    });
+    pollerRef.current = poller;
+    poller.start();
+    return () => {
+      if (pollerRef.current) {
+        try { pollerRef.current.stop(); } catch {}
+        pollerRef.current = null;
+      }
+    };
+  }, [IMEI, auth.user?.id_token]);
+
+  // Bubble selection to parent if requested
+  useEffect(() => {
+    onMeshSelected?.(selectedMeshName || null);
+  }, [selectedMeshName, onMeshSelected]);
+
   if (!geojson) return <div>Loading…</div>;
 
   return (
-    <div style={{ width: "100%", height: "100vh", position: "relative" }}>
-      <div style={{ position: "absolute", top: 16, left: 16, zIndex: 10, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "8px 12px", borderRadius: 8 }}>
-        Selected: {selectedLabel ?? "(none)"} {selectedMeshName ? `• Mesh: ${selectedMeshName}` : ""}
+    <div style={{ display: "flex", width: "100%", height: "100vh" }}>
+      <div style={{ flex: "1 1 auto", position: "relative" }}>
+        <div style={{ position: "absolute", top: 16, left: 16, zIndex: 10, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "8px 12px", borderRadius: 8 }}>
+          Selected: {selectedLabel ?? "(none)"} {selectedMeshName ? `• Mesh: ${selectedMeshName}` : ""}
+        </div>
+        <Canvas camera={{ position: [33.4, -202.9, 447.9], fov: 45 }}>
+          <CanvasDecor mode={mode} currentRegion={currentRegion} />
+          <ambientLight intensity={0.5} />
+          <directionalLight position={[100, 100, 200]} intensity={0.8} />
+          {mode === "map" ? (
+            <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} />
+          ) : (
+            <FurnitureDetail controlsRef={controlsRef} onMeshSelected={setSelectedMeshName} />
+          )}
+          <CameraInit
+            controlsRef={controlsRef}
+            initial={{ position: [33.4, -202.9, 447.9], radius: 494.5, alphaDeg: 1.0, betaDeg: 116.2 }}
+          />
+          <OrbitControls ref={controlsRef} enableDamping dampingFactor={0.08} />
+        </Canvas>
       </div>
-      <Canvas camera={{ position: [33.4, -202.9, 447.9], fov: 45 }}>
-      <CanvasDecor mode={mode} currentRegion={currentRegion} />
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[100, 100, 200]} intensity={0.8} />
-      {mode === "map" ? (
-        <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} />
-      ) : (
-        <FurnitureDetail controlsRef={controlsRef} onMeshSelected={setSelectedMeshName} />
-      )}
-      <CameraInit
-        controlsRef={controlsRef}
-        initial={{ position: [33.4, -202.9, 447.9], radius: 494.5, alphaDeg: 1.0, betaDeg: 116.2 }}
-      />
-      <OrbitControls ref={controlsRef} enableDamping dampingFactor={0.08} />
-      </Canvas>
+      <div style={{ width: 380, background: "rgba(1, 7, 22, 0.9)", color: "#fff", padding: 12, overflowY: "auto" }}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>Device Gauges</div>
+        {IMEI ? (
+          selectedMeshName ? (
+            <LatestDashboard deviceMap={deviceMap} device={[selectedMeshName]} dataType={[]} />
+          ) : (
+            <div>Click a model mesh to show gauges</div>
+          )
+        ) : (
+          <div>No IMEI available for this user</div>
+        )}
+      </div>
     </div>
   );
 }
