@@ -2,7 +2,7 @@
 // Map3DComponent.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
-import { OrbitControls, Html, useGLTF } from "@react-three/drei";
+import { OrbitControls, Html, useGLTF, useProgress } from "@react-three/drei";
 import * as THREE from "three";
 import * as d3 from "d3-geo";
 
@@ -437,29 +437,7 @@ export default function Map3DComponent() {
         Selected: {selectedLabel ?? "(none)"} {selectedMeshName ? `• Mesh: ${selectedMeshName}` : ""}
       </div>
       <Canvas camera={{ position: [33.4, -202.9, 447.9], fov: 45 }}>
-      <SceneBackground color="rgb(1, 7, 22)" />
-      <GridBackground
-        options={{
-          position: new THREE.Vector3(0, 0, -1),
-          gridSize: (currentRegion === "Hong Kong" || currentRegion === "Macau") ? 160 : 12000,
-          gridDivision: (currentRegion === "Hong Kong" || currentRegion === "Macau") ?32:400,
-          gridColor: 0x1f3b6b,
-          shapeSize: 0,
-          shapeColor: 0x2f5fa9,
-          pointSize: 2.0,
-          pointColor: 0x4aa3ff,
-          pointLayout: (currentRegion === "Hong Kong" || currentRegion === "Macau") ?{ row: 32*4, col: 32*4 }:{ row: 1600, col: 1600 },
-          pointBlending: THREE.AdditiveBlending,
-          diffuse: true,
-          diffuseSpeed: 10,
-          diffuseColor: 0x00ffff,
-          diffuseWidth: 30,
-          diffuseDir: 0,
-          adaptivePointSize: true,
-          minPointSize:  (currentRegion === "Hong Kong" || currentRegion === "Macau") ?0.1:1.5,
-          maxPointSize: 5
-        }}
-      />
+      <CanvasDecor mode={mode} currentRegion={currentRegion} />
       <ambientLight intensity={0.5} />
       <directionalLight position={[100, 100, 200]} intensity={0.8} />
       {mode === "map" ? (
@@ -704,6 +682,41 @@ function GridBackground({ options }: { options: GridOptions }) {
       {/* @ts-ignore */}
       <points geometry={pointsGeometry} material={shaderMaterial} />
     </group>
+  );
+}
+
+function CanvasDecor({ mode, currentRegion }: { mode: "map" | "detail"; currentRegion: string }) {
+  const { active } = useProgress();
+  const isDetail = mode === "detail";
+  const loadingGLB = isDetail && active;
+  return (
+    <>
+      <SceneBackground color={isDetail ? "rgb(197, 197, 197)" : "rgb(1, 7, 22)"} />
+      {!isDetail && (
+        <GridBackground
+          options={{
+            position: new THREE.Vector3(0, 0, -1),
+            gridSize: (currentRegion === "Hong Kong" || currentRegion === "Macau") ? 160 : 12000,
+            gridDivision: (currentRegion === "Hong Kong" || currentRegion === "Macau") ? 32 : 400,
+            gridColor: 0x1f3b6b,
+            shapeSize: 0,
+            shapeColor: 0x2f5fa9,
+            pointSize: 2.0,
+            pointColor: 0x4aa3ff,
+            pointLayout: (currentRegion === "Hong Kong" || currentRegion === "Macau") ? { row: 32 * 4, col: 32 * 4 } : { row: 1600, col: 1600 },
+            pointBlending: THREE.AdditiveBlending,
+            diffuse: true,
+            diffuseSpeed: 10,
+            diffuseColor: 0x00ffff,
+            diffuseWidth: 30,
+            diffuseDir: 0,
+            adaptivePointSize: true,
+            minPointSize: (currentRegion === "Hong Kong" || currentRegion === "Macau") ? 0.1 : 1.5,
+            maxPointSize: 5
+          }}
+        />
+      )}
+    </>
   );
 }
 
