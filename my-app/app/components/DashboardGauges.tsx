@@ -47,7 +47,6 @@ export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2
   };
 
   // Merge value and unit into one string (add space between if unit exists)
-  const valueWithUnit = unit ? `${String(v)} ${unit}` : String(v);
 
   return (
     <div className="panel" style={{ padding: compact ? 10 : 12 }}>
@@ -92,7 +91,8 @@ export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2
             marginTop: 30,
             display: 'block',
           }}>
-            {valueWithUnit}
+            <span style={{ fontSize: "22px", fontWeight: "bold" }}>{String(v)}</span>
+            {unit && <span style={{ fontSize: "14px" }}> {unit}</span>}
           </div>
         </div>
       </div>
