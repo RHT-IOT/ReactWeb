@@ -6,7 +6,10 @@ import { useEffect, useState,useId } from "react";
 BigInt.prototype.toJSON = function() {
   return this.toString();
 };
-function AccessManager({ data }) {
+function AccessManager({ data, onSave }) {
+  if (!data) {
+    return <div>Loading…</div>;
+  }
   const { email, Location, DevList } = data;
 
   // State: which email has which selections
@@ -30,9 +33,19 @@ function AccessManager({ data }) {
       return { ...prev, [user]: userAccess };
     });
   };
+  const handleSave = () => {
+    // Call the parent function with the current access state
+    if (onSave) {
+      onSave(access);
+    } else {
+      console.log("Access state:", access);
+    }
+  };
 
   return (
+    <div>
     <div style={{ display: "flex", gap: "24px" }}>
+     
       {email.map(user => (
         <div key={user} style={{ border: "1px solid #ccc", padding: 12 }}>
           <h3>{user}</h3>
@@ -62,7 +75,14 @@ function AccessManager({ data }) {
       <pre style={{ flex: 1, background: "#f9f9f9", padding: 12 }}>
         {JSON.stringify(access, null, 2)}
       </pre>
+
+        
     </div>
+    <button className="brand-button button-outline"  onClick={handleSave} style={{ marginTop: 16 }}>
+        Save Access
+      </button>
+    </div>
+    
   );
 }
 function ThreeTextBoxRow({values,setValues}) {
@@ -210,6 +230,16 @@ export default function AdminPage() {
       return;
 
   }
+  const addDevUser = async(access)=>{
+    return await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getSensorBoxModel", {
+      method: "POST",
+       headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${auth.user.id_token}`,
+      },
+      body: JSON.stringify(access)
+    });
+  };
   const AddNewIMEIDev = async () => {
     const newDevice = {
       DeviceID: BigInt(sensorBoxModel[0]), // convert to number if needed
@@ -280,9 +310,9 @@ export default function AdminPage() {
       </div>
       <div className="panel" style={{ marginTop: 16 }}>
         <div className="section-title">Refresh DevUser</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button className="brand-button button-outline" onClick={GetDevUser}>Refresh</button>
-        <AccessManager data = {userDev}/>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
+        <AccessManager data = {userDev} onSave = {addDevUser}/>
         {/* {userDev && (
           <div>
             <p>Email: {userDev.email}</p>
