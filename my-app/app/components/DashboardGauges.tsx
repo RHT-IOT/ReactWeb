@@ -9,7 +9,6 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 const centerTextPlugin: any = {
   id: 'centerText',
   afterDraw(chart: any) {
-    const { width } = chart;
     const ctx = chart.ctx;
     const dataset = chart.data.datasets?.[0];
     const value = Array.isArray(dataset?.data) ? dataset?.data[0] : undefined;
@@ -21,23 +20,39 @@ const centerTextPlugin: any = {
 
     if (value == null) return;
 
+    // Find true center from arc meta if available; fallback to chartArea center
+    let cx: number;
+    let cy: number;
+    const meta = chart.getDatasetMeta?.(0);
+    if (meta && meta.data && meta.data.length > 0 && meta.data[0]) {
+      const center = meta.data[0];
+      cx = center.x;
+      cy = center.y;
+    } else {
+      const { width } = chart;
+      const { top, bottom } = chart.chartArea || { top: 0, bottom: width / 2 };
+      cx = width / 2;
+      cy = top + (bottom - top) / 2;
+    }
+
     ctx.save();
-    ctx.font = `700 ${fontSize}px system-ui`;
-    ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(value), width / 2, chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2);
+
+    ctx.font = `700 ${fontSize}px system-ui`;
+    ctx.fillStyle = color;
+    ctx.fillText(String(value), cx, cy);
 
     if (unit) {
       ctx.font = `600 ${(fontSize * 0.8)}px system-ui`;
       ctx.fillStyle = subColor;
-      ctx.fillText(String(unit), width / 2, chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2 + fontSize);
+      ctx.fillText(String(unit), cx, cy + fontSize * 0.9);
     }
 
     if (label) {
       ctx.font = `600 ${(fontSize * 0.7)}px system-ui`;
       ctx.fillStyle = subColor;
-      ctx.fillText(String(label), width / 2, chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2 - fontSize);
+      ctx.fillText(String(label), cx, cy - fontSize * 0.9);
     }
 
     ctx.restore();

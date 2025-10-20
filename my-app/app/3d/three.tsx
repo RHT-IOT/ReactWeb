@@ -8,6 +8,8 @@ import * as d3 from "d3-geo";
 import { useAuth } from "react-oidc-context";
 import { LatestDashboard } from "../components/DashboardGauges";
 import { getIMEIList, createLatestDpPoller, DeviceInfo } from "../lib/aws";
+import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+import { point as turfPoint } from "@turf/helpers";
 
 const projection = d3.geoMercator().scale(400).translate([0, 0]);
 
@@ -280,20 +282,6 @@ function Marker({ name, lngLat, onSelectName, onClearSelection, isSelected, radi
 function Markers({ onSelectName, onClearSelection, selectedName }) {
   const [radius, setRadius] = useState(3);
   const points = useMemo(() => {
-    const hkNames = new Set(["Hong Kong", "CMA", "HKSTP"]);
-    const moNames = new Set(["Macau", "BOCDSS", "BOCYH"]);
-    if (hkNames.has(selectedName)) {
-      return [
-        { name: "CMA", lngLat: [114.1899591, 22.3975198] },
-        { name: "HKSTP", lngLat: [114.2143757, 22.424446] }
-      ];
-    }
-    if (moNames.has(selectedName)) {
-      return [
-        { name: "BOCDSS", lngLat: [113.5430407, 22.202699] },
-        { name: "BOCYH", lngLat: [113.5467654, 22.2109068] }
-      ];
-    }
     return [
       { name: "Hong Kong", lngLat: [114.1694, 22.3193] },
       { name: "Macau", lngLat: [113.5439, 22.1987] }
@@ -318,45 +306,71 @@ function Markers({ onSelectName, onClearSelection, selectedName }) {
 }
 
 // Device pillars rendered from IMEI list coordinates
-function DevicePillar({ device, onSelectIMEI, radius = 2 }: { device: DeviceInfo; onSelectIMEI: (imei: string) => void; radius?: number }) {
+function DevicePillar({ device, selectedIMEI, onSelectIMEI, radius = 3 }: { device: DeviceInfo; selectedIMEI?: string; onSelectIMEI: (imei: string) => void; radius?: number }) {
   const [hovered, setHovered] = useState(false);
+  const name = device.Location || String(device.DeviceID);
+  const isLocal = useMemo(() => ["CMA", "HKSTP", "BOCDSS", "BOCYH"].includes(name), [name]);
+  const pillarHeight = (name === "Hong Kong" || name === "Macau") ? 80 : 20;
+  const baseRadius = radius && radius > 0 ? (name !== "Hong Kong" && name !== "Macau") ? 0.02 : radius : (isLocal ? 1.0 : 1.2);
+  const pillarRadius = baseRadius * (hovered ? 1.3 : 1.0);
+  const isSelected = selectedIMEI === String(device.DeviceID);
+  const top = hovered ? "#2291ff" : (isSelected ? "rgb(250, 148, 53)" : "rgb(255, 0, 0)");
+  const bottom = hovered ? "#66c2ff" : "#ffcf99";
   const pos = useMemo(() => {
-    // API provides [lat, lng]; d3 expects [lng, lat]
-    const [lat, lng] = device.Coordinate;
+    const lat = Number(device.Coordinate?.[0]);
+    const lng = Number(device.Coordinate?.[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [0, 0, 0] as [number, number, number];
     const [x, y] = projection([lng, lat]);
     return [x, -y, 5] as [number, number, number];
   }, [device.Coordinate]);
   return (
     <group position={pos}>
       <GradientPillar
-        height={hovered ? 80 : 60}
-        radius={radius}
+        height={pillarHeight}
+        radius={pillarRadius}
+        topColor={top}
+        bottomColor={bottom}
+        opacity={100}
         glow={true}
         glowColor="#2f7cff"
-        glowScale={1.5}
-        glowStrength={hovered ? 1.4 : 0.9}
-        onClick={() => onSelectIMEI(String(device.DeviceID))}
-        onPointerOver={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
+        glowScale={hovered ? 1.6 : 1.4}
+        glowStrength={hovered ? 1.2 : 0.8}
+        onClick={(e: any) => { e.stopPropagation(); onSelectIMEI(String(device.DeviceID)); }}
+        onPointerOver={(e: any) => { e.stopPropagation(); setHovered(true); }}
+        onPointerOut={(e: any) => { e.stopPropagation(); setHovered(false); }}
       />
-      <Html center style={{ pointerEvents: "none", color: "#fff", background: "rgba(0,0,0,0.35)", padding: "2px 6px", borderRadius: 6 }}>
-        {device.Location}
-      </Html>
+      {(hovered || isSelected) && (
+        <Html
+          center
+          position={[0, 0, 2]}
+          style={{
+            font: "12px/1.2 system-ui",
+            color: "#fff",
+            background: "rgba(0,0,0,0.6)",
+            padding: "2px 6px",
+            borderRadius: "4px",
+            pointerEvents: "none",
+            whiteSpace: "nowrap"
+          }}
+        >
+          {name}
+        </Html>
+      )}
     </group>
   );
 }
 
-function DevicePillars({ devices, onSelectIMEI }: { devices: DeviceInfo[]; onSelectIMEI: (imei: string) => void }) {
+function DevicePillars({ devices, selectedIMEI, onSelectIMEI }: { devices: DeviceInfo[]; selectedIMEI?: string; onSelectIMEI: (imei: string) => void }) {
   if (!devices || devices.length === 0) return null;
   return (
     <group>
       {devices.map((d) => (
-        <DevicePillar key={String(d.DeviceID)} device={d} onSelectIMEI={onSelectIMEI} />
+        <DevicePillar key={String(d.DeviceID)} device={d} selectedIMEI={selectedIMEI} onSelectIMEI={onSelectIMEI} />
       ))}
     </group>
   );
 }
-function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, devices, onSelectIMEI }) {
+function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, devices, onSelectIMEI, mode }: { geojson: any; controlsRef: any; onSelectName: (name: string | null) => void; selectedName: string | null; region: string; devices?: DeviceInfo[]; onSelectIMEI?: (imei: string) => void; mode?: any; }) {
   const mapGroupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
   const [mapRadius, setMapRadius] = useState(0);
@@ -368,26 +382,18 @@ function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, de
     if (!mapGroupRef.current || !controlsRef?.current) return;
     const id = requestAnimationFrame(() => {
       const group = mapGroupRef.current!;
-      // Compute current bounds
       const box = new THREE.Box3().setFromObject(group);
       const sphere = new THREE.Sphere();
       box.getBoundingSphere(sphere);
       const center = sphere.center.clone();
-
-      // Recenter group so the map lies at origin (XY), aligning to grid center
       group.position.set(group.position.x - center.x, group.position.y - center.y, group.position.z);
-
-      // Recompute bounds after recenter
       const box2 = new THREE.Box3().setFromObject(group);
       const sphere2 = new THREE.Sphere();
       box2.getBoundingSphere(sphere2);
       const newCenter = sphere2.center;
       setMapRadius(sphere2.radius);
-
-      // Update controls target and camera relative to new center
       controlsRef.current.target.copy(newCenter);
       controlsRef.current.update();
-
       camera.position.set(newCenter.x, newCenter.y + sphere2.radius * 0.6, newCenter.z + sphere2.radius * 2.2);
       camera.near = Math.max(0.1, sphere2.radius / 100);
       camera.far = Math.max(1000, sphere2.radius * 100);
@@ -395,6 +401,59 @@ function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, de
     });
     return () => cancelAnimationFrame(id);
   }, [geojson, controlsRef, camera]);
+
+  // Filter devices to those within current geojson region boundaries
+  const fcForFilter = useMemo(() => {
+    if (!geojson) return null;
+    const feats = (geojson.features || []).filter((f: any) => {
+      const name = String(f?.properties?.name || "").toLowerCase();
+      if (region === "Hong Kong") return name.includes("hong kong") || name.includes("hksar") || name.includes("hk");
+      if (region === "Macau") return name.includes("macau") || name.includes("macao");
+      return true; // China or other: allow all
+    });
+    return { type: "FeatureCollection", features: feats.length > 0 ? feats : (geojson.features || []) } as any;
+  }, [geojson, region]);
+  
+  const filteredDevices = useMemo(() => {
+    if (!devices || !fcForFilter) return [] as DeviceInfo[];
+    try {
+      // Prefer robust Turf point-in-polygon across MultiPolygon/Polygon
+      return devices.filter(d => {
+        const lat = Number(d.Coordinate?.[0]);
+        const lon = Number(d.Coordinate?.[1]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+        const p = turfPoint([lon, lat]);
+        const feats = (fcForFilter as any).features || [];
+        for (let i = 0; i < feats.length; i++) {
+          try {
+            if (booleanPointInPolygon(p, feats[i])) return true;
+          } catch {}
+        }
+        return false;
+      });
+    } catch (e) {
+      // Fallback to d3.geoContains (if available), then bbox
+      try {
+        return devices.filter(d => {
+          const lat = Number(d.Coordinate?.[0]);
+          const lon = Number(d.Coordinate?.[1]);
+          return Number.isFinite(lat) && Number.isFinite(lon) && d3.geoContains(fcForFilter as any, [lon, lat]);
+        });
+      } catch (e2) {
+        try {
+          const [[minLon, minLat], [maxLon, maxLat]] = d3.geoBounds(fcForFilter as any);
+          return devices.filter(d => {
+            const lat = Number(d.Coordinate?.[0]);
+            const lon = Number(d.Coordinate?.[1]);
+            return Number.isFinite(lat) && Number.isFinite(lon) && lon >= minLon && lon <= maxLon && lat >= minLat && lat <= maxLat;
+          });
+        } catch (e3) {
+          console.warn('Region filter failed; hiding pillars', e3);
+          return [] as DeviceInfo[];
+        }
+      }
+    }
+  }, [devices, fcForFilter]);
 
   return (
     <group ref={mapGroupRef} scale={region === "Hong Kong" || region === "Macau" ? [6, 6, 1] : [1, 1, 1]}>
@@ -408,8 +467,10 @@ function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, de
           hoverScaleZ={hoverScaleZ}
         />
       ))}
-      <Markers onSelectName={onSelectName} selectedName={selectedName} />
-      <DevicePillars devices={devices} onSelectIMEI={onSelectIMEI} />
+      {mode === "map"? <Markers onSelectName={onSelectName} selectedName={selectedName} />:<></>}
+      {mode === "region" && filteredDevices && onSelectIMEI && (
+        <DevicePillars devices={filteredDevices} selectedIMEI={undefined} onSelectIMEI={onSelectIMEI} />
+      )}
     </group>
   );
 }
@@ -421,7 +482,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [mapFile, setMapFile] = useState<string>("China.json");
   const [currentRegion, setCurrentRegion] = useState<string>("China");
-  const [mode, setMode] = useState<"map" | "detail">("map");
+  const [mode, setMode] = useState<"map" | "region" | "detail">("map");
   const [selectedMeshName, setSelectedMeshName] = useState<string | null>(null);
   const [imeiList, setImeiList] = useState<DeviceInfo[]>([]);
   const [IMEI, setIMEI] = useState<string>("");
@@ -430,15 +491,21 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
 
   // Track region based on selected label (keep region when selecting POIs)
   useEffect(() => {
-    const hkNames = new Set(["Hong Kong", "CMA", "HKSTP"]);
-    const moNames = new Set(["Macau", "BOCDSS", "BOCYH"]);
+    const hkLocal = new Set(["CMA", "HKSTP"]);
+    const moLocal = new Set(["BOCDSS", "BOCYH"]);
     if (selectedLabel == null) {
       setCurrentRegion("China");
       setMode("map");
-    } else if (hkNames.has(selectedLabel)) {
+    } else if (selectedLabel === "Hong Kong") {
       setCurrentRegion("Hong Kong");
-      setMode(selectedLabel === "BOCYH" ? "detail" : "map");
-    } else if (moNames.has(selectedLabel)) {
+      setMode("region");
+    } else if (selectedLabel === "Macau") {
+      setCurrentRegion("Macau");
+      setMode("region");
+    } else if (hkLocal.has(selectedLabel)) {
+      setCurrentRegion("Hong Kong");
+      setMode("map");
+    } else if (moLocal.has(selectedLabel)) {
       setCurrentRegion("Macau");
       setMode(selectedLabel === "BOCYH" ? "detail" : "map");
     }
@@ -480,7 +547,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   // Fetch IMEI list and set default IMEI
   useEffect(() => {
     if (!auth.isAuthenticated || !auth.user?.id_token || !auth.user?.profile?.email) return;
-    getIMEIList(auth.user.profile.email, auth.user.id_token)
+    getIMEIList(auth.user.profile.email, auth.user?.id_token)
       .then(list => { setImeiList(list); setIMEI(String(list?.[0]?.DeviceID || "")); })
       .catch(err => console.error("3D getIMEIList error:", err));
   }, [auth.isAuthenticated, auth.user?.id_token, auth.user?.profile?.email]);
@@ -527,9 +594,8 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           <CanvasDecor mode={mode} currentRegion={currentRegion} />
           <ambientLight intensity={0.5} />
           <directionalLight position={[100, 100, 200]} intensity={0.8} />
-          {mode === "map" ? (
-            <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} />
-          ) : (
+          <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} mode={mode} />
+          {mode === "detail" && (
             <FurnitureDetail controlsRef={controlsRef} onMeshSelected={setSelectedMeshName} />
           )}
           <CameraInit
@@ -785,7 +851,7 @@ function GridBackground({ options }: { options: GridOptions }) {
   );
 }
 
-function CanvasDecor({ mode, currentRegion }: { mode: "map" | "detail"; currentRegion: string }) {
+function CanvasDecor({ mode, currentRegion }: { mode: "map" | "region" | "detail"; currentRegion: string }) {
   const { active } = useProgress();
   const isDetail = mode === "detail";
   const loadingGLB = isDetail && active;
