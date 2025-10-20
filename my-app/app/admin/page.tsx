@@ -33,6 +33,34 @@ function AccessManager({ data, onSave }) {
       return { ...prev, [user]: userAccess };
     });
   };
+
+  // Select all devices for a given user/location
+  const selectAllForLocation = (user, loc, devices) => {
+    setAccess(prev => {
+      const userAccess = { ...prev[user] };
+      const current = new Set(userAccess[loc] || []);
+      for (const d of devices) current.add(d);
+      userAccess[loc] = Array.from(current);
+      return { ...prev, [user]: userAccess };
+    });
+  };
+
+  // Clear all devices for a given user/location
+  const clearAllForLocation = (user, loc) => {
+    const prev = access;
+    const userAccess = { ...prev[user] };
+    userAccess[loc] = [];
+    // delete userAccess[user][loc];
+    const next = { ...prev, [user]: userAccess };
+    delete next[user][loc];
+    setAccess(next);
+    if (onSave) {
+      onSave(next);
+    } else {
+      console.log("Access cleared and saved:", next);
+    }
+  };
+
   const handleSave = () => {
     // Call the parent function with the current access state
     if (onSave) {
@@ -51,7 +79,24 @@ function AccessManager({ data, onSave }) {
           <h3>{user}</h3>
           {Location.map((loc, idx) => (
             <div key={loc} style={{ marginBottom: 8 }}>
-              <strong>{loc}</strong>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <strong>{loc}</strong>
+                <button
+                  className="brand-button button-outline"
+                  style={{ padding: "2px 6px", fontSize: 12 }}
+                  onClick={() => selectAllForLocation(user, loc, DevList[idx] || [])}
+                  disabled={(DevList[idx] || []).length === 0}
+                >
+                  Select All
+                </button>
+                <button
+                  className="brand-button button-outline"
+                  style={{ padding: "2px 6px", fontSize: 12 }}
+                  onClick={() => clearAllForLocation(user, loc)}
+                >
+                  Clear
+                </button>
+              </div>
               <div style={{ marginLeft: 12 }}>
                 {DevList[idx].length === 0 ? (
                   <em>No devices</em>
@@ -230,15 +275,33 @@ export default function AdminPage() {
       return;
 
   }
-  const addDevUser = async(access)=>{
-    return await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getSensorBoxModel", {
-      method: "POST",
-       headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${auth.user.id_token}`,
-      },
-      body: JSON.stringify(access)
-    });
+  const addDevUser = async (access) => {
+    // Transform nested access map into array of records
+    // [{ email, Location, DeviceRight: [...] }, ...]
+    const payload = [];
+    for (const user of Object.keys(access || {})) {
+      const locMap = access[user] || {};
+      for (const loc of Object.keys(locMap)) {
+        const rights = locMap[loc] || [];
+        // Skip empty rights: clearing deletes the association, don't include empties
+        if (rights.length > 0) {
+          payload.push({ email: user, Location: loc, DeviceRight: rights });
+        }
+      }
+    }
+    console.log("AddDevUser:",payload);
+    try {
+      return await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/PutUserDevice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${auth.user.id_token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.error("Failed to save user device rights:", err);
+    }
   };
   const AddNewIMEIDev = async () => {
     const newDevice = {
@@ -263,6 +326,7 @@ export default function AdminPage() {
       if (auth.user?.profile.email === "natsense00@gmail.com") {
         console.log("correct user");
         getDevList();
+        GetDevUser();
       } else {
         console.log("not ok");
       }
