@@ -105,7 +105,22 @@ export default function LatestLineChart({ deviceMap, deviceType, maxPoints = 10,
         const options: any = {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: true }, title: { display: false } },
+          interaction: { mode: 'nearest', intersect: false },
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: deviceType ? `${deviceType} • ${field}` : field },
+            tooltip: {
+              enabled: true,
+              displayColors: false,
+              callbacks: {
+                title: () => '',
+                label: (ctx: any) => {
+                  const v = typeof ctx.parsed?.y === 'number' ? ctx.parsed.y : ctx.raw;
+                  return String(v);
+                }
+              }
+            }
+          },
           scales: { x: { display: true, title: { display: true, text: 'Time' } }, y: { display: true } }
         };
         return (
