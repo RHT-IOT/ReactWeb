@@ -7,6 +7,7 @@ import * as THREE from "three";
 import * as d3 from "d3-geo";
 import { useAuth } from "react-oidc-context";
 import { LatestDashboard } from "../components/DashboardGauges";
+import LatestLineChart from "../components/LatestLineChart";
 import { getIMEIList, createLatestDpPoller, DeviceInfo } from "../lib/aws";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { point as turfPoint } from "@turf/helpers";
@@ -589,7 +590,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
 
   return (
     <div style={{ display: "flex", width: "100%", height: "100vh" }}>
-      <div style={{ flex: "1 1 auto", position: "relative" }}>
+      <div style={{ flex: "1 1 auto", position: "relative" ,width: "70%",}}>
         <div style={{ position: "absolute", top: 16, left: 16, zIndex: 10, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "8px 12px", borderRadius: 8 }}>
           Selected: {selectedLabel ?? "(none)"} {selectedMeshName ? `• Mesh: ${selectedMeshName}` : ""}
         </div>
@@ -608,18 +609,23 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           <OrbitControls ref={controlsRef} enableDamping dampingFactor={0.08} />
         </Canvas>
       </div>
-      <div style={{ width: 380, background: "rgba(1, 7, 22, 0.9)", color: "#fff", padding: 12, overflowY: "auto" }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Device Gauges</div>
-        {IMEI ? (
-          selectedMeshName ? (
-            <LatestDashboard deviceMap={deviceMap} device={[selectedMeshName]} dataType={[]} />
+      {mode === "detail" && (
+        <div style={{ flex: "0 0 400px", width: 400, minWidth: 320, flexShrink: 0, background: "rgba(1, 7, 22, 0.9)", color: "#fff", padding: 12, overflowY: "auto" }}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Detail Metrics</div>
+          {IMEI ? (
+            selectedMeshName ? (
+              <>
+                <LatestDashboard deviceMap={deviceMap} device={[selectedMeshName]} dataType={[]} compact />
+                <LatestLineChart deviceMap={deviceMap} deviceType={selectedMeshName} maxPoints={10} title="Realtime Line Chart" height={180} />
+              </>
+            ) : (
+              <div>Click a model mesh to show gauges and chart</div>
+            )
           ) : (
-            <div>Click a model mesh to show gauges</div>
-          )
-        ) : (
-          <div>No IMEI available for this user</div>
-        )}
-      </div>
+            <div>No IMEI available for this user</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

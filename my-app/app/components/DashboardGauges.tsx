@@ -60,7 +60,7 @@ const centerTextPlugin: any = {
 };
 ChartJS.register(centerTextPlugin);
 
-export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2' }: any) {
+export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2', compact = false }: any) {
   const v = Math.max(0, Math.min(Number(value), Number(max)));
   const remainder = Math.max(0, Number(max) - v);
   const data = {
@@ -82,13 +82,13 @@ export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2
       legend: { display: false },
       tooltip: { enabled: false },
       title: { display: false },
-      centerText: { unit, color: '#111', subColor: '#666', fontSize: 20 }
+      centerText: { unit, color: '#111', subColor: '#666', fontSize: compact ? 16 : 20 }
     },
   };
   return (
-    <div className="panel" style={{ padding: 12 }}>
+    <div className="panel" style={{ padding: compact ? 10 : 12 }}>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
-      <div style={{ height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ height: compact ? 120 : 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Doughnut data={data} options={optionsGauge} />
       </div>
     </div>
@@ -118,7 +118,7 @@ function inferRange(key: string, value: number) {
   return { max: Math.ceil(value * 1.2), unit: fallbackUnit, color: '#26b6b2' };
 }
 
-export function LatestDashboard({ deviceMap, device, dataType }: any) {
+export function LatestDashboard({ deviceMap, device, dataType, compact = false }: any) {
   if (!deviceMap || !device || device.length === 0) {
     return <pre>No latest data yet</pre>;
   }
@@ -141,9 +141,9 @@ export function LatestDashboard({ deviceMap, device, dataType }: any) {
   return (
     <div>
       <div style={{ marginBottom: 8, opacity: 0.7 }}>Latest timestamp: {cards[0].ts || '-'}</div>
-      <div className="dashboard-grid">
+      <div className="dashboard-grid" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${compact ? 160 : 220}px, 1fr))`, gap: compact ? 12 : 16 }}>
         {cards.map((c, idx) => (
-          <GaugeCard key={idx} title={c.title} value={c.value} max={c.max} unit={c.unit} color={c.color} />
+          <GaugeCard key={idx} title={c.title} value={c.value} max={c.max} unit={c.unit} color={c.color} compact={compact} />
         ))}
       </div>
     </div>
