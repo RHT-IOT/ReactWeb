@@ -306,12 +306,11 @@ function Markers({ onSelectName, onClearSelection, selectedName }) {
 }
 
 // Device pillars rendered from IMEI list coordinates
-function DevicePillar({ device, selectedIMEI, onSelectIMEI, radius = 3 }: { device: DeviceInfo; selectedIMEI?: string; onSelectIMEI: (imei: string) => void; radius?: number }) {
+function DevicePillar({ device, selectedIMEI, onSelectIMEI, radius = 3 ,onSelectName}: { device: DeviceInfo; selectedIMEI?: string; onSelectIMEI: (imei: string) => void; radius?: number ;onSelectName?:any}) {
   const [hovered, setHovered] = useState(false);
   const name = device.Location || String(device.DeviceID);
-  const isLocal = useMemo(() => ["CMA", "HKSTP", "BOCDSS", "BOCYH"].includes(name), [name]);
   const pillarHeight = (name === "Hong Kong" || name === "Macau") ? 80 : 20;
-  const baseRadius = radius && radius > 0 ? (name !== "Hong Kong" && name !== "Macau") ? 0.02 : radius : (isLocal ? 1.0 : 1.2);
+  const baseRadius = radius && radius > 0 ? (name !== "Hong Kong" && name !== "Macau") ? 0.02 : radius : 1.0;
   const pillarRadius = baseRadius * (hovered ? 1.3 : 1.0);
   const isSelected = selectedIMEI === String(device.DeviceID);
   const top = hovered ? "#2291ff" : (isSelected ? "rgb(250, 148, 53)" : "rgb(255, 0, 0)");
@@ -335,7 +334,7 @@ function DevicePillar({ device, selectedIMEI, onSelectIMEI, radius = 3 }: { devi
         glowColor="#2f7cff"
         glowScale={hovered ? 1.6 : 1.4}
         glowStrength={hovered ? 1.2 : 0.8}
-        onClick={(e: any) => { e.stopPropagation(); onSelectIMEI(String(device.DeviceID)); }}
+        onClick={(e: any) => { e.stopPropagation(); onSelectIMEI(String(device.DeviceID)); onSelectName(device.Location);}}
         onPointerOver={(e: any) => { e.stopPropagation(); setHovered(true); }}
         onPointerOut={(e: any) => { e.stopPropagation(); setHovered(false); }}
       />
@@ -360,17 +359,17 @@ function DevicePillar({ device, selectedIMEI, onSelectIMEI, radius = 3 }: { devi
   );
 }
 
-function DevicePillars({ devices, selectedIMEI, onSelectIMEI }: { devices: DeviceInfo[]; selectedIMEI?: string; onSelectIMEI: (imei: string) => void }) {
+function DevicePillars({ devices, selectedIMEI, onSelectIMEI, onSelectName }: { devices: DeviceInfo[]; selectedIMEI?: string; onSelectIMEI: (imei: string) => void ; onSelectName?: any}) {
   if (!devices || devices.length === 0) return null;
   return (
     <group>
       {devices.map((d) => (
-        <DevicePillar key={String(d.DeviceID)} device={d} selectedIMEI={selectedIMEI} onSelectIMEI={onSelectIMEI} />
+        <DevicePillar key={String(d.DeviceID)} device={d} selectedIMEI={selectedIMEI} onSelectIMEI={onSelectIMEI} onSelectName={onSelectName} />
       ))}
     </group>
   );
 }
-function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, devices, onSelectIMEI, mode }: { geojson: any; controlsRef: any; onSelectName: (name: string | null) => void; selectedName: string | null; region: string; devices?: DeviceInfo[]; onSelectIMEI?: (imei: string) => void; mode?: any; }) {
+function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, devices, onSelectIMEI, showMarkers = false, showPillars = false, onFilteredDevices }: { geojson: any; controlsRef: any; onSelectName: (name: string | null) => void; selectedName: string | null; region: string; devices?: DeviceInfo[]; onSelectIMEI?: (imei: string) => void; showMarkers?: boolean; showPillars?: boolean; onFilteredDevices?: (devs: DeviceInfo[]) => void; }) {
   const mapGroupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
   const [mapRadius, setMapRadius] = useState(0);
@@ -455,6 +454,9 @@ function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, de
     }
   }, [devices, fcForFilter]);
 
+  useEffect(() => {
+    onFilteredDevices?.(filteredDevices);
+  }, [filteredDevices, onFilteredDevices]);
   return (
     <group ref={mapGroupRef} scale={region === "Hong Kong" || region === "Macau" ? [6, 6, 1] : [1, 1, 1]}>
       {geojson.features.map((feature, i) => (
@@ -467,9 +469,9 @@ function MapScene({ geojson, controlsRef, onSelectName, selectedName, region, de
           hoverScaleZ={hoverScaleZ}
         />
       ))}
-      {mode === "map"? <Markers onSelectName={onSelectName} selectedName={selectedName} />:<></>}
-      {mode === "region" && filteredDevices && onSelectIMEI && (
-        <DevicePillars devices={filteredDevices} selectedIMEI={undefined} onSelectIMEI={onSelectIMEI} />
+      {showMarkers && <Markers onSelectName={onSelectName} selectedName={selectedName} />}
+      {showPillars && filteredDevices && onSelectIMEI && (
+        <DevicePillars devices={filteredDevices} selectedIMEI={undefined} onSelectIMEI={onSelectIMEI} onSelectName={onSelectName} />
       )}
     </group>
   );
@@ -487,6 +489,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const [imeiList, setImeiList] = useState<DeviceInfo[]>([]);
   const [IMEI, setIMEI] = useState<string>("");
   const [deviceMap, setDeviceMap] = useState<any>({});
+  const [visibleDevices, setVisibleDevices] = useState<DeviceInfo[]>([]);
   const pollerRef = useRef<any>(null);
 
   // Track region based on selected label (keep region when selecting POIs)
@@ -502,12 +505,12 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     } else if (selectedLabel === "Macau") {
       setCurrentRegion("Macau");
       setMode("region");
-    } else if (hkLocal.has(selectedLabel)) {
-      setCurrentRegion("Hong Kong");
-      setMode("map");
-    } else if (moLocal.has(selectedLabel)) {
+    } else if (selectedLabel === "BOCYH") {
       setCurrentRegion("Macau");
-      setMode(selectedLabel === "BOCYH" ? "detail" : "map");
+      setMode("detail");
+    } else {
+      // keep current region and return to map mode
+      setMode("map");
     }
   }, [selectedLabel]);
 
@@ -594,7 +597,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           <CanvasDecor mode={mode} currentRegion={currentRegion} />
           <ambientLight intensity={0.5} />
           <directionalLight position={[100, 100, 200]} intensity={0.8} />
-          <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} mode={mode} />
+           {mode !== "detail" && <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} showPillars={mode === "region"} showMarkers={mode === "map"} onFilteredDevices={setVisibleDevices} />}
           {mode === "detail" && (
             <FurnitureDetail controlsRef={controlsRef} onMeshSelected={setSelectedMeshName} />
           )}
