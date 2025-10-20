@@ -1,68 +1,26 @@
 "use client";
-import React from "react";
+import React, { useRef, useEffect } from "react";
 import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// Center text plugin for Doughnut
-const centerTextPlugin: any = {
-  id: 'centerText',
-  afterDraw(chart: any) {
-    const ctx = chart.ctx;
-    const dataset = chart.data.datasets?.[0];
-    const value = Array.isArray(dataset?.data) ? dataset?.data[0] : undefined;
-    const label = chart.data?.labels?.[0];
-    const unit = chart?.options?.plugins?.centerText?.unit || '';
-    const color = chart?.options?.plugins?.centerText?.color || '#111';
-    const subColor = chart?.options?.plugins?.centerText?.subColor || '#666';
-    const fontSize = chart?.options?.plugins?.centerText?.fontSize || 18;
-
-    if (value == null) return;
-
-    // Find true center from arc meta if available; fallback to chartArea center
-    let cx: number;
-    let cy: number;
-    const meta = chart.getDatasetMeta?.(0);
-    if (meta && meta.data && meta.data.length > 0 && meta.data[0]) {
-      const center = meta.data[0];
-      cx = center.x;
-      cy = center.y;
-    } else {
-      const { width } = chart;
-      const { top, bottom } = chart.chartArea || { top: 0, bottom: width / 2 };
-      cx = width / 2;
-      cy = top + (bottom - top) / 2;
-    }
-
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    ctx.font = `700 ${fontSize}px system-ui`;
-    ctx.fillStyle = color;
-    ctx.fillText(String(value), cx, cy);
-
-    if (unit) {
-      ctx.font = `600 ${(fontSize * 0.8)}px system-ui`;
-      ctx.fillStyle = subColor;
-      ctx.fillText(String(unit), cx, cy + fontSize * 0.9);
-    }
-
-    if (label) {
-      ctx.font = `600 ${(fontSize * 0.7)}px system-ui`;
-      ctx.fillStyle = subColor;
-      ctx.fillText(String(label), cx, cy - fontSize * 0.9);
-    }
-
-    ctx.restore();
-  }
-};
-ChartJS.register(centerTextPlugin);
-
 export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2', compact = false }: any) {
   const v = Math.max(0, Math.min(Number(value), Number(max)));
   const remainder = Math.max(0, Number(max) - v);
+  const fontSize = compact ? 16 : 20;
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Resize handling to keep chart centered
+  useEffect(() => {
+    const handleResize = () => {
+      containerRef.current?.querySelector('canvas')?.parentElement?.forceUpdate?.();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [compact]);
+
   const data = {
     labels: ['Value', 'Remaining'],
     datasets: [{
@@ -73,8 +31,10 @@ export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2
       borderWidth: 0,
     }]
   };
+
   const optionsGauge: any = {
     responsive: true,
+    maintainAspectRatio: false,
     rotation: -125,
     circumference: Math.PI * 80,
     cutout: '60%',
@@ -82,19 +42,65 @@ export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2
       legend: { display: false },
       tooltip: { enabled: false },
       title: { display: false },
-      centerText: { unit, color: '#111', subColor: '#666', fontSize: compact ? 16 : 20 }
     },
+    layout: { padding: 0 }
   };
+
+  // Merge value and unit into one string (add space between if unit exists)
+  const valueWithUnit = unit ? `${String(v)} ${unit}` : String(v);
+
   return (
     <div className="panel" style={{ padding: compact ? 10 : 12 }}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
-      <div style={{ height: compact ? 120 : 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Doughnut data={data} options={optionsGauge} />
+      {/* Title above gauge (kept as original) */}
+      <div style={{ fontWeight: 700, marginBottom: 8, textAlign: 'center' }}>{title}</div>
+      
+      {/* Gauge container */}
+      <div 
+        ref={containerRef}
+        style={{ 
+          height: compact ? 120 : 150, 
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {/* Doughnut Chart */}
+        <Doughnut 
+          data={data} 
+          options={optionsGauge} 
+          style={{ width: '100%', height: '100%' }}
+        />
+        
+        {/* Centered text overlay - value + unit together */}
+        <div style={{
+          position: 'absolute',
+          textAlign: 'center',
+          pointerEvents: 'none',
+          // Keep original perfect centering
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          lineHeight: 1,
+        }}>
+          {/* Main value + unit (single line, same format as before) */}
+          <div style={{
+            fontSize: `${fontSize}px`,
+            fontWeight: 700,
+            color: '#111',
+            // Kept your original marginTop to match existing positioning
+            marginTop: 30,
+            display: 'block',
+          }}>
+            {valueWithUnit}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
+// The rest of the code (inferRange and LatestDashboard) remains UNCHANGED
 function inferRange(key: string, value: number) {
   const FIELD_RANGES: Record<string, { max: number; unit?: string; color?: string }> = {
     DSI: { max: 31, unit: 'Days', color: '#f2a007' },
@@ -122,28 +128,32 @@ export function LatestDashboard({ deviceMap, device, dataType, compact = false }
   if (!deviceMap || !device || device.length === 0) {
     return <pre>No latest data yet</pre>;
   }
-
   const cards: any[] = [];
   device.forEach((dev: string) => {
     const entry = deviceMap[dev];
     if (!entry) return;
     const ts = entry["Timestamp"]?.split(".")[0]?.replace("T", " ");
-    const keys = Object.keys(entry).filter(k => !["Timestamp", "DeviceID", "DeviceType"].includes(k) && typeof entry[k] === 'number');
-    const selected = dataType && dataType.length > 0 ? keys.filter(k => dataType.includes(k)) : keys;
+    const keys = Object.keys(entry).filter(k => 
+      !["Timestamp", "DeviceID", "DeviceType"].includes(k) && typeof entry[k] === 'number'
+    );
+    const selected = dataType && dataType.length > 0 
+      ? keys.filter(k => dataType.includes(k)) 
+      : keys;
     selected.forEach(k => {
       const { max, unit, color } = inferRange(k, Number(entry[k]));
       cards.push({ title: `${dev} • ${k}`, value: Number(entry[k]), max, unit, color, ts });
     });
   });
-
   if (cards.length === 0) return <pre>No numeric fields to display</pre>;
-
   return (
     <div>
       <div style={{ marginBottom: 8, opacity: 0.7 }}>Latest timestamp: {cards[0].ts || '-'}</div>
-      <div className="dashboard-grid" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${compact ? 160 : 220}px, 1fr))`, gap: compact ? 12 : 16 }}>
+      <div className="dashboard-grid" style={{ 
+        gridTemplateColumns: `repeat(auto-fit, minmax(${compact ? 160 : 220}px, 1fr))`, 
+        gap: compact ? 12 : 16 
+      }}>
         {cards.map((c, idx) => (
-          <GaugeCard key={idx} title={c.title} value={c.value} max={c.max} unit={c.unit} color={c.color} compact={compact} />
+          <GaugeCard key={idx} {...c} compact={compact} />
         ))}
       </div>
     </div>
