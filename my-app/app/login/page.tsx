@@ -606,6 +606,16 @@ function LoginApp() {
           <ExportCSVButton data={timeSeriesData} filename={IMEI + "_" + startDateTime.split(".")[0].replace("T", " ") + "_to_" + endDateTime.split(".")[0].replace("T", " ") + ".csv"} />
         </div>
       </div>
+
+      {/* Bottom actions */}
+      <div className="panel" style={{ marginTop: 16 }}>
+        <div className="section-title">View in 3D</div>
+        <div className="control-row">
+          <a className="brand-button button-secondary" href="/3d" style={{ marginLeft: 8 }}>View 3D Model</a>
+        </div>
+      </div>
+      
+          
     </div>
   );
 }

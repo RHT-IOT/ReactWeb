@@ -94,7 +94,6 @@ function App() {
         <p className="hero-subtitle">Sign in to view dashboards, filter data, and export CSV.</p>
         <div className="hero-actions"> 
           <button className="brand-button" onClick={() => auth.signinRedirect()}>Sign in</button>
-          <a className="brand-button button-secondary" href="/3d" style={{ marginLeft: 8 }}>View 3D Model</a>
         </div>
       </section>
     </div>
