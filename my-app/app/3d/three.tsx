@@ -587,12 +587,15 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   }, [selectedMeshName, onMeshSelected]);
 
   if (!geojson) return <div>Loading…</div>;
-
+  const backMainMap = () => {
+    setCurrentRegion("China");
+    setMode("map");
+  };
   return (
     <div style={{ display: "flex", width: "100%", height: "100vh" }}>
       <div style={{ flex: "1 1 auto", position: "relative" ,width: "70%",}}>
-        <div style={{ position: "absolute", top: 16, left: 16, zIndex: 10, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "8px 12px", borderRadius: 8 }}>
-          Selected: {selectedLabel ?? "(none)"} {selectedMeshName ? `• Mesh: ${selectedMeshName}` : ""}
+        <div style={{ position: "absolute", top: 16, left: 16, zIndex: 1, padding: "8px 12px", borderRadius: 8 }}>
+          <button className="brand-button" onClick={backMainMap}>back to main map</button>
         </div>
         <Canvas camera={{ position: [33.4, -202.9, 447.9], fov: 45 }}>
           <CanvasDecor mode={mode} currentRegion={currentRegion} />

@@ -14,7 +14,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 
 // Center text plugin is provided by shared DashboardGauges; local plugin removed.
 
-function SelectBasicExample({ IMEI , setValue, setcurrdev, setdevarr}) {
+function SelectIMEIDev({ IMEI , setValue, setcurrdev, setdevarr}) {
   const handleSelect=(e)=>{
     if(e.target.value){
       setValue(e.target.value)
@@ -57,6 +57,23 @@ function DropboxDev({ devicearr, setcurrdev}) {
           {value}
         </option>
       ))}
+    </Form.Select>
+  );
+}
+function DropboxTime({setValue}) {
+  const handleSelect=(e)=>{
+    if(e.target.value){
+      setValue(e.target.value)
+    }
+  }
+  return (
+    <Form.Select className="brand-select" aria-label="Default select example" onChange={handleSelect}>
+      <option>Choose Time Interval</option>
+      <option value="1min">1 min</option>
+      <option value="5min">5 min</option>
+      <option value="15min">15 min</option>
+      <option value="1hr">1 hours</option>
+      <option value="1day">1 day</option>
     </Form.Select>
   );
 }
@@ -160,7 +177,7 @@ function LoginApp() {
   const [IMEI_ARR, setIMEI_ARR] = useState([]);
   const [IMEI,setIMEI]=useState('');
   const [deviceMap, setDeviceMap]=useState('');
-  const [timestamp, setTimestamp]=useState('');
+  const [timeInterval, setTimeInterval]=useState('');
   const [deviceType, setDeviceType]=useState('');
   const [device, setDevice]=useState<string[]>([]);
   const [startDateTime, setStartDateTime]=useState('');
@@ -295,7 +312,7 @@ function LoginApp() {
   const getDpfromtime = async () => {
     if (!IMEI || !auth.user?.id_token) return;
     try {
-      const data = await getDPFromTime(IMEI, startDateTime, endDateTime, auth.user.id_token);
+      const data = await getDPFromTime(IMEI, startDateTime, endDateTime, auth.user.id_token, timeInterval);
       setDeviceType(data.deviceTypes || []);
       setTimeSeriesData(data.items || []);
     } catch (err) {
@@ -427,13 +444,20 @@ function LoginApp() {
         <div className="panel">
           <div className="section-title">Filters</div>
           <div className="control-row">
-            <SelectBasicExample IMEI={IMEI_ARR} setValue={setIMEI} setcurrdev={setDevice} setdevarr={setDeviceType} />
+            <SelectIMEIDev IMEI={IMEI_ARR} setValue={setIMEI} setcurrdev={setDevice} setdevarr={setDeviceType} />
           </div>
+          <p>Device:</p>
           <div className="control-row">
-            <DropboxDev devicearr={deviceType} setcurrdev={setDevice} />
+          <DropboxDev devicearr={deviceType} setcurrdev={setDevice} />
           </div>
+          <p>Datatype:</p>
           <div className="control-row">
             <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
+          </div>
+          
+          <p>Average Interval:</p>
+          <div className="control-row">
+            <DropboxTime setValue = {setTimeInterval}/>
           </div>
           <div className="control-row">
             <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime} />

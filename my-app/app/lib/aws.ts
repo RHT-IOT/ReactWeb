@@ -59,7 +59,8 @@ export async function getDPFromTime(
   IMEI: string,
   startDateTime: string,
   endDateTime: string,
-  idToken: string
+  idToken: string,
+  timeInterval: string
 ): Promise<{ deviceTypes: string[]; items: any[] }> {
   const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getDpFromTime", {
     method: "POST",
@@ -67,7 +68,7 @@ export async function getDPFromTime(
       "Content-Type": "application/json",
       "Authorization": `Bearer ${idToken}`,
     },
-    body: JSON.stringify({ IMEI, startDateTime, endDateTime }),
+    body: JSON.stringify({ IMEI, startDateTime, endDateTime, timeInterval}),
   });
   const data = await res.json();
   const temp = JSON.parse(data.body ?? "{}");
