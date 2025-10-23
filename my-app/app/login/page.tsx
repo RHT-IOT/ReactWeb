@@ -38,7 +38,7 @@ function SelectIMEIDev({ IMEI , setValue, setcurrdev, setdevarr}) {
   );
 }
 
-function DropboxDev({ devicearr, setcurrdev}) {
+function DropboxDev({ devicearr, setcurrdev, allowed }: { devicearr: any; setcurrdev: (v: string[]) => void; allowed?: string[] }) {
   if(!devicearr){
     return (<p>click refresh</p>);
   }
@@ -47,12 +47,14 @@ function DropboxDev({ devicearr, setcurrdev}) {
     const values = selectedKeys.map(key => Array.isArray(devicearr) ? devicearr[key] : devicearr[key]);
     setcurrdev(values);
   };
+  const allowedSet = new Set(allowed || []);
   const entries = Array.isArray(devicearr)
     ? devicearr.map((val, idx) => [String(idx), val])
     : Object.entries(devicearr);
+  const filteredEntries = entries.filter(([key, value]) => allowedSet.size === 0 ? true : allowedSet.has(String(value)));
   return (
-    <Form.Select multiple size={Math.min(entries.length, 6)} className="brand-select" aria-label="Select devices" onChange={handleMultiSelect}>
-      {entries.map(([key, value]) => (
+    <Form.Select multiple size={Math.min(filteredEntries.length, 6)} className="brand-select" aria-label="Select devices" onChange={handleMultiSelect}>
+      {filteredEntries.map(([key, value]) => (
         <option key={key} value={key}>
           {value}
         </option>
@@ -185,6 +187,8 @@ function LoginApp() {
   const [dataType, setDataType] = useState<string[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState([]);
   const [lastRefresh, setLastRefresh] = useState<string>("");
+  const [allowedByDeviceId, setAllowedByDeviceId] = useState<Record<string, string[]>>({});
+  const [allowedDeviceTypes, setAllowedDeviceTypes] = useState<string[]>([]);
   const pollerRef = useRef<any>(null);
 
   // Theme state
@@ -288,7 +292,17 @@ function LoginApp() {
       if(auth.isAuthenticated && email){
         try {
           const list = await getIMEIList(email, auth.user?.id_token as string);
-          setIMEI_ARR(list);
+          const items = Array.isArray(list.items) ? list.items : [];
+          setIMEI_ARR(items);
+          const access = Array.isArray(list.dev_access) ? list.dev_access : [];
+          const map: Record<string, string[]> = {};
+          items.forEach((it, idx) => {
+            const devs = Array.isArray(access[idx]) ? access[idx].map(String) : [];
+            map[String(it.DeviceID)] = devs;
+          });
+          setAllowedByDeviceId(map);
+          // Initialize allowed list for current IMEI if available
+          if (IMEI) setAllowedDeviceTypes(map[String(IMEI)] || []);
         } catch (err) {
           console.error("getIMEIList error:", err);
         }
@@ -296,6 +310,12 @@ function LoginApp() {
     }
     callApi(auth.user?.profile.email);
   }, [auth.isAuthenticated, auth.user?.access_token,auth.user?.profile.email,auth.user?.id_token]);
+
+  // Update allowed device types when IMEI changes
+  useEffect(() => {
+    if (!IMEI) { setAllowedDeviceTypes([]); return; }
+    setAllowedDeviceTypes(allowedByDeviceId[String(IMEI)] || []);
+  }, [IMEI, allowedByDeviceId]);
   
   const getLatestDp = async () => {
     if (!IMEI || !auth.user?.id_token) return;
@@ -448,7 +468,7 @@ function LoginApp() {
           </div>
           <p>Device:</p>
           <div className="control-row">
-          <DropboxDev devicearr={deviceType} setcurrdev={setDevice} />
+          <DropboxDev devicearr={deviceType} setcurrdev={setDevice} allowed={allowedDeviceTypes} />
           </div>
           <p>Datatype:</p>
           <div className="control-row">

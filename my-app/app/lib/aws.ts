@@ -12,7 +12,9 @@ export type DeviceInfo = {
   Coordinate: [number, number]; // [lat, lng]
 };
 
-export async function getIMEIList(email: string, idToken: string): Promise<DeviceInfo[]> {
+export type IMEIListResult = { items: DeviceInfo[]; dev_access: string[][] };
+
+export async function getIMEIList(email: string, idToken: string): Promise<IMEIListResult> {
   const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getIMEI", {
     method: "POST",
     headers: {
@@ -22,15 +24,17 @@ export async function getIMEIList(email: string, idToken: string): Promise<Devic
     body: JSON.stringify({ email }),
   });
   const data = await res.json();
-  let arr: unknown = [];
+  let body: any = {};
   try {
-    arr = JSON.parse(data?.body ?? "[]");
+    body = JSON.parse(data?.body ?? "{}");
   } catch (e) {
     console.error("getIMEIList JSON parse error", e);
   }
-  if (!Array.isArray(arr)) return [];
-  // Trust the API to return desired shape
-  return (arr as DeviceInfo[]).filter(d => Array.isArray(d.Coordinate) && d.Coordinate.length === 2);
+  const itemsRaw = Array.isArray(body?.items) ? body.items : [];
+  const devAccessRaw = Array.isArray(body?.dev_access) ? body.dev_access : [];
+  const items: DeviceInfo[] = (itemsRaw as DeviceInfo[]).filter(d => Array.isArray(d.Coordinate) && d.Coordinate.length === 2);
+  const dev_access: string[][] = devAccessRaw.map((a: any) => Array.isArray(a) ? a.map(String) : []);
+  return { items, dev_access };
 }
 
 export async function getLatestDP(IMEI: string, idToken: string): Promise<LatestDPResult> {

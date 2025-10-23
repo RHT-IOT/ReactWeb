@@ -552,7 +552,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   useEffect(() => {
     if (!auth.isAuthenticated || !auth.user?.id_token || !auth.user?.profile?.email) return;
     getIMEIList(auth.user.profile.email, auth.user?.id_token)
-      .then(list => { setImeiList(list); setIMEI(String(list?.[0]?.DeviceID || "")); })
+      .then(list => { const items = Array.isArray(list.items) ? list.items : []; setImeiList(items); setIMEI(String(items?.[0]?.DeviceID || "")); })
       .catch(err => console.error("3D getIMEIList error:", err));
   }, [auth.isAuthenticated, auth.user?.id_token, auth.user?.profile?.email]);
 
