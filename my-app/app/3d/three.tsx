@@ -492,6 +492,26 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const [deviceMap, setDeviceMap] = useState<any>({});
   const [visibleDevices, setVisibleDevices] = useState<DeviceInfo[]>([]);
   const pollerRef = useRef<any>(null);
+  const [allowedByDeviceId, setAllowedByDeviceId] = useState<Record<string, string[]>>({});
+  const [allowedDeviceTypes3D, setAllowedDeviceTypes3D] = useState<string[]>([]);
+  const [rtDevice3D, setRtDevice3D] = useState<string>("");
+  const [updateIntervalMs, setUpdateIntervalMs] = useState<number>(5 * 60 * 1000);
+  const [maxPoints3D, setMaxPoints3D] = useState<number>(10);
+  const [selectedDataTypes3D, setSelectedDataTypes3D] = useState<string[]>([]);
+  const availableDataTypes3D = useMemo(() => {
+    const entry = deviceMap && rtDevice3D ? deviceMap[rtDevice3D] : undefined;
+    if (!entry || typeof entry !== 'object') return [] as string[];
+    const meta = new Set(["Timestamp", "DeviceID", "DeviceType"]);
+    return Object.keys(entry).filter(k => !meta.has(k) && typeof entry[k] === 'number');
+  }, [deviceMap, rtDevice3D]);
+
+  useEffect(() => {
+    const allowed = new Set(availableDataTypes3D);
+    setSelectedDataTypes3D(prev => {
+      const intersection = prev.filter(d => allowed.has(d));
+      return intersection.length > 0 ? intersection : availableDataTypes3D;
+    });
+  }, [availableDataTypes3D]);
 
   // Track region based on selected label (keep region when selecting POIs)
   useEffect(() => {
@@ -552,7 +572,21 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   useEffect(() => {
     if (!auth.isAuthenticated || !auth.user?.id_token || !auth.user?.profile?.email) return;
     getIMEIList(auth.user.profile.email, auth.user?.id_token)
-      .then(list => { const items = Array.isArray(list.items) ? list.items : []; setImeiList(items); setIMEI(String(items?.[0]?.DeviceID || "")); })
+      .then(list => {
+        const items = Array.isArray(list.items) ? list.items : [];
+        const devAccess = Array.isArray(list.dev_access) ? list.dev_access : [];
+        setImeiList(items);
+        const firstIMEI = String(items?.[0]?.DeviceID || "");
+        setIMEI(firstIMEI);
+        const map: Record<string, string[]> = {};
+        for (let i = 0; i < items.length; i++) {
+          const imei = String(items[i]?.DeviceID);
+          const allowed = Array.isArray(devAccess?.[i]) ? devAccess[i].map(String) : [];
+          map[imei] = allowed;
+        }
+        setAllowedByDeviceId(map);
+        setAllowedDeviceTypes3D(map[firstIMEI] || []);
+      })
       .catch(err => console.error("3D getIMEIList error:", err));
   }, [auth.isAuthenticated, auth.user?.id_token, auth.user?.profile?.email]);
 
@@ -566,7 +600,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     const poller = createLatestDpPoller({
       IMEI,
       idToken: auth.user.id_token,
-      intervalMs: 5 * 60 * 1000,
+      intervalMs: updateIntervalMs,
       callback: (result) => {
         setDeviceMap(result.deviceMap);
       },
@@ -579,12 +613,37 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
         pollerRef.current = null;
       }
     };
-  }, [IMEI, auth.user?.id_token]);
+  }, [IMEI, auth.user?.id_token, updateIntervalMs]);
 
   // Bubble selection to parent if requested
   useEffect(() => {
     onMeshSelected?.(selectedMeshName || null);
   }, [selectedMeshName, onMeshSelected]);
+
+  // Update allowed device types when IMEI changes
+  useEffect(() => {
+    setAllowedDeviceTypes3D(allowedByDeviceId[String(IMEI)] || []);
+  }, [IMEI, allowedByDeviceId]);
+
+  // Compute realtime device options filtered by dev_access
+  const realtimeDeviceOptions3D = useMemo(() => {
+    const keys = deviceMap && typeof deviceMap === "object" ? Object.keys(deviceMap) : [];
+    const allowed = Array.isArray(allowedDeviceTypes3D) ? allowedDeviceTypes3D : [];
+    return allowed?.length ? keys.filter(k => allowed.includes(k)) : keys;
+  }, [deviceMap, allowedDeviceTypes3D]);
+
+  // Select default realtime device when options change
+  useEffect(() => {
+    const opts = realtimeDeviceOptions3D;
+    if (!opts || opts.length === 0) { setRtDevice3D(""); return; }
+    if (!rtDevice3D || !opts.includes(rtDevice3D)) {
+      if (selectedMeshName && opts.includes(selectedMeshName)) {
+        setRtDevice3D(selectedMeshName);
+      } else {
+        setRtDevice3D(opts[0]);
+      }
+    }
+  }, [realtimeDeviceOptions3D, selectedMeshName]);
 
   if (!geojson) return <div>Loading…</div>;
   const backMainMap = () => {
@@ -618,8 +677,69 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           {IMEI ? (
             selectedMeshName ? (
               <>
-                <LatestDashboard deviceMap={deviceMap} device={[selectedMeshName]} dataType={[]} compact />
-                <LatestLineChart deviceMap={deviceMap} deviceType={selectedMeshName} maxPoints={10} title="Realtime Line Chart" height={180} />
+                <div style={{ marginBottom: 12 }}>
+                  <div className="control-row" style={{ marginBottom: 8 }}>
+                    <label style={{ marginRight: 8 }}>Realtime Device:</label>
+                    <select
+                      value={rtDevice3D || ""}
+                      onChange={(e) => setRtDevice3D(e.target.value)}
+                      style={{ width: "100%" }}
+                    >
+                      {realtimeDeviceOptions3D.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="control-row" style={{ marginBottom: 8 }}>
+                    <label style={{ marginRight: 8 }}>Data Types:</label>
+                    <select
+                      multiple
+                      value={selectedDataTypes3D}
+                      onChange={(e) => {
+                        const opts = Array.from(e.target.selectedOptions).map(o => o.value);
+                        setSelectedDataTypes3D(opts);
+                      }}
+                      size={Math.min(6, Math.max(3, (availableDataTypes3D?.length || 0)))}
+                      style={{ width: "100%" }}
+                    >
+                      {availableDataTypes3D.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="control-row" style={{ marginBottom: 8 }}>
+                    <label style={{ marginRight: 8 }}>Update Interval:</label>
+                    <select
+                      value={String(updateIntervalMs)}
+                      onChange={(e) => setUpdateIntervalMs(Number(e.target.value))}
+                    >
+                      <option value={10000}>10s</option>
+                      <option value={30000}>30s</option>
+                      <option value={60000}>1 min</option>
+                      <option value={300000}>5 min</option>
+                    </select>
+                  </div>
+                  <div className="control-row">
+                    <label style={{ marginRight: 8 }}>Max Points:</label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={500}
+                      step={5}
+                      value={maxPoints3D}
+                      onChange={(e) => setMaxPoints3D(Math.max(1, Number(e.target.value) || 10))}
+                      style={{ width: "100%" }}
+                    />
+                  </div>
+                </div>
+                {rtDevice3D ? (
+                  <>
+                    <LatestDashboard deviceMap={deviceMap} device={[rtDevice3D]} dataType={selectedDataTypes3D} compact />
+                    <LatestLineChart deviceMap={deviceMap} deviceType={rtDevice3D} maxPoints={maxPoints3D} title="Realtime Line Chart" height={180} />
+                  </>
+                ) : (
+                  <div>Select a device type to view metrics</div>
+                )}
               </>
             ) : (
               <div>Click a model mesh to show gauges and chart</div>
@@ -632,7 +752,6 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     </div>
   );
 }
-
 
 function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { position: [number, number, number]; radius: number; alphaDeg: number; betaDeg: number } }) {
   const { camera } = useThree();
