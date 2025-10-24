@@ -678,12 +678,12 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
             selectedMeshName ? (
               <>
                 <div style={{ marginBottom: 12 }}>
-                  <div className="control-row" style={{ marginBottom: 8 }}>
+                  <div className="control-row" style={{ marginBottom: 8}}>
                     <label style={{ marginRight: 8 }}>Realtime Device:</label>
                     <select
                       value={rtDevice3D || ""}
                       onChange={(e) => setRtDevice3D(e.target.value)}
-                      style={{ width: "100%" }}
+                      style={{background: "rgba(255, 255, 255, 0.9)", color: "rgba(0, 0, 0, 0.9)"}}
                     >
                       {realtimeDeviceOptions3D.map((d) => (
                         <option key={d} value={d}>{d}</option>
@@ -700,7 +700,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
                         setSelectedDataTypes3D(opts);
                       }}
                       size={Math.min(6, Math.max(3, (availableDataTypes3D?.length || 0)))}
-                      style={{ width: "100%" }}
+                      style={{ width: "100%" , background: "rgba(255, 255, 255, 0.9)", color: "rgba(0, 0, 0, 0.9)"}}
                     >
                       {availableDataTypes3D.map((t) => (
                         <option key={t} value={t}>{t}</option>
@@ -712,6 +712,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
                     <select
                       value={String(updateIntervalMs)}
                       onChange={(e) => setUpdateIntervalMs(Number(e.target.value))}
+                      style={{ background: "rgba(255, 255, 255, 0.9)", color: "rgba(0, 0, 0, 0.9)"}}
                     >
                       <option value={10000}>10s</option>
                       <option value={30000}>30s</option>
@@ -728,7 +729,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
                       step={5}
                       value={maxPoints3D}
                       onChange={(e) => setMaxPoints3D(Math.max(1, Number(e.target.value) || 10))}
-                      style={{ width: "100%" }}
+                      style={{background: "rgba(255, 255, 255, 0.9)", color: "rgba(0, 0, 0, 0.9)"}}
                     />
                   </div>
                 </div>
