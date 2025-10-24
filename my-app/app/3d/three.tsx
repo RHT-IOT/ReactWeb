@@ -1,6 +1,6 @@
 "use client";
 // Map3DComponent.jsx
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Html, useGLTF, useProgress } from "@react-three/drei";
 import * as THREE from "three";
@@ -632,6 +632,26 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     return allowed?.length ? keys.filter(k => allowed.includes(k)) : keys;
   }, [deviceMap, allowedDeviceTypes3D]);
 
+  // When a mesh is clicked, select it and map to a realtime device immediately
+  const handleMeshSelected = useCallback((name: string | null) => {
+    setSelectedMeshName(name);
+    if (!name) return;
+    const opts = realtimeDeviceOptions3D;
+    if (!opts || opts.length === 0) return;
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const meshNorm = norm(name);
+    let next: string | null = null;
+    if (opts.includes(name)) {
+      next = name;
+    } else {
+      next = opts.find(o => {
+        const on = norm(o);
+        return on.includes(meshNorm) || meshNorm.includes(on);
+      }) || null;
+    }
+    setRtDevice3D(next || opts[0]);
+  }, [realtimeDeviceOptions3D]);
+
   // Select default realtime device when options change
   useEffect(() => {
     const opts = realtimeDeviceOptions3D;
@@ -662,7 +682,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           <directionalLight position={[100, 100, 200]} intensity={0.8} />
            {mode !== "detail" && <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} showPillars={mode === "region"} showMarkers={mode === "map"} onFilteredDevices={setVisibleDevices} />}
           {mode === "detail" && (
-            <FurnitureDetail controlsRef={controlsRef} onMeshSelected={setSelectedMeshName} />
+            <FurnitureDetail controlsRef={controlsRef} onMeshSelected={handleMeshSelected} selectedMeshName={selectedMeshName} />
           )}
           <CameraInit
             controlsRef={controlsRef}
@@ -782,7 +802,7 @@ function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { pos
   return null;
 }
 
-function FurnitureDetail({ controlsRef, onMeshSelected }) {
+function FurnitureDetail({ controlsRef, onMeshSelected, selectedMeshName }: { controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshName?: string | null }) {
   const { camera } = useThree();
   const gltf: any = useGLTF("/3dmodel/Furniture.glb");
   const groupRef = useRef<THREE.Group>(null);
