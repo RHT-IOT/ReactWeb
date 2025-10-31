@@ -414,29 +414,31 @@ function LoginApp() {
     return () => stopAutoRefresh();
   }, [IMEIs]);
 
-  // Build chart data for selected device and data type
+  // Build chart data: separate lines per IMEI + device + data type
   const prepareChartData = () => {
-    if (!device || device.length === 0 || !dataType || dataType.length === 0 || timeSeriesData.length === 0) {
+    if (!IMEIs || IMEIs.length === 0 || !device || device.length === 0 || !dataType || dataType.length === 0 || timeSeriesData.length === 0) {
       return { datasets: [] };
     }
-    const colors = ['#36a2eb', '#ff6384', '#4bc0c0', '#9966ff', '#ff9f40', '#c9cbcf'];
+    const colors = ['#36a2eb', '#ff6384', '#4bc0c0', '#9966ff', '#ff9f40', '#c9cbcf', '#2ecc71', '#c0392b'];
     const datasets: any[] = [];
-    device.forEach((dev, di) => {
-      const deviceData = timeSeriesData.filter(item => item.DeviceType === dev);
-      dataType.forEach((dt, ti) => {
-        const points = deviceData
-          .filter(item => typeof item[dt] === 'number')
-          .map(item => ({ x: item.Timestamp.split('.') [0].replace('T', ' '), y: item[dt] }));
-        if (points.length > 0) {
-          const color = colors[(di * dataType.length + ti) % colors.length];
-          datasets.push({
-            label: `${dev} - ${dt}`,
-            data: points,
-            borderColor: color,
-            backgroundColor: 'transparent',
-            tension: 0.1,
-          });
-        }
+    IMEIs.forEach((imei, ii) => {
+      device.forEach((dev, di) => {
+        dataType.forEach((dt, ti) => {
+          const deviceData = timeSeriesData.filter(item => String(item.DeviceID) === String(imei) && item.DeviceType === dev);
+          const points = deviceData
+            .filter(item => typeof item[dt] === 'number')
+            .map(item => ({ x: item.Timestamp.split('.')[0].replace('T', ' '), y: item[dt] }));
+          if (points.length > 0) {
+            const color = colors[(ii * device.length * dataType.length + di * dataType.length + ti) % colors.length];
+            datasets.push({
+              label: `${dev} • ${dt} • IMEI ${imei}`,
+              data: points,
+              borderColor: color,
+              backgroundColor: 'transparent',
+              tension: 0.1,
+            });
+          }
+        });
       });
     });
     return { datasets };
