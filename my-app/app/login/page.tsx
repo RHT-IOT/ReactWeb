@@ -5,7 +5,7 @@ import Form from 'react-bootstrap/Form';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, ArcElement } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { LatestDashboard } from "../components/DashboardGauges";
-import { getIMEIList, getLatestDP, getDPFromTime, createLatestDpPoller } from "../lib/aws";
+import { getIMEIList, getLatestDP, getDPFromTime } from "../lib/aws";
 import 'chartjs-adapter-date-fns';
 import DateTimeRangePickerValue from "../datepicker";
 import dayjs from "dayjs";
@@ -14,26 +14,26 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 
 // Center text plugin is provided by shared DashboardGauges; local plugin removed.
 
-function SelectIMEIDev({ IMEI , setValue, setcurrdev, setdevarr}) {
-  const handleSelect=(e)=>{
-    if(e.target.value){
-      setValue(e.target.value)
-      setcurrdev([]);
-      setdevarr([]);
-    }
-  }
+function SelectIMEIMulti({ IMEI, setValues, setcurrdev, setdevarr }) {
+  const handleMultiSelect = (e) => {
+    const selected = Array.from(e.target.selectedOptions).map(opt => opt.value);
+    setValues(selected);
+    setcurrdev([]);
+    setdevarr([]);
+  };
+  const entries = Array.isArray(IMEI) ? IMEI : [];
+  const size = Math.min(entries.length || 6, 8);
   return (
-    <Form.Select className="brand-select" aria-label="Default select example" onChange={handleSelect}>
-      <option value="">Choose location</option>
-       {IMEI.map((opt, index) => {
-          const label = typeof opt === 'string' ? opt : (opt?.Location ?? String(opt?.DeviceID ?? ''));
-          const value = typeof opt === 'string' ? opt : String(opt?.DeviceID ?? '');
-          return (
-            <option key={index} value={value}>
-              {label}
-            </option>
-          );
-        })}
+    <Form.Select multiple size={size} className="brand-select" aria-label="Select IMEIs" onChange={handleMultiSelect}>
+      {entries.map((opt, index) => {
+        const label = typeof opt === 'string' ? opt : (opt?.Location ?? String(opt?.DeviceID ?? ''));
+        const value = typeof opt === 'string' ? opt : String(opt?.DeviceID ?? '');
+        return (
+          <option key={index} value={value}>
+            {label} ({value})
+          </option>
+        );
+      })}
     </Form.Select>
   );
 }
@@ -177,7 +177,7 @@ function LoginApp() {
   const auth = useAuth();
   const [userInfo, setUserInfo] = useState({ username: "" , name: ""});
   const [IMEI_ARR, setIMEI_ARR] = useState([]);
-  const [IMEI,setIMEI]=useState('');
+  const [IMEIs, setIMEIs] = useState<string[]>([]);
   const [deviceMap, setDeviceMap]=useState('');
   const [timeInterval, setTimeInterval]=useState('');
   const [deviceType, setDeviceType]=useState('');
@@ -190,6 +190,7 @@ function LoginApp() {
   const [allowedByDeviceId, setAllowedByDeviceId] = useState<Record<string, string[]>>({});
   const [allowedDeviceTypes, setAllowedDeviceTypes] = useState<string[]>([]);
   const pollerRef = useRef<any>(null);
+  const [selectedDevicesByImei, setSelectedDevicesByImei] = useState<Record<string, string[]>>({});
 
   // Theme state
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-b');
@@ -301,8 +302,12 @@ function LoginApp() {
             map[String(it.DeviceID)] = devs;
           });
           setAllowedByDeviceId(map);
-          // Initialize allowed list for current IMEI if available
-          if (IMEI) setAllowedDeviceTypes(map[String(IMEI)] || []);
+          // Initialize allowed list for current IMEIs if available
+          if (IMEIs && IMEIs.length > 0) {
+            const union = new Set<string>();
+            IMEIs.forEach(id => (map[String(id)] || []).forEach(dt => union.add(dt)));
+            setAllowedDeviceTypes(Array.from(union));
+          }
         } catch (err) {
           console.error("getIMEIList error:", err);
         }
@@ -311,18 +316,54 @@ function LoginApp() {
     callApi(auth.user?.profile.email);
   }, [auth.isAuthenticated, auth.user?.access_token,auth.user?.profile.email,auth.user?.id_token]);
 
-  // Update allowed device types when IMEI changes
+  // Update allowed device types when IMEIs change
   useEffect(() => {
-    if (!IMEI) { setAllowedDeviceTypes([]); return; }
-    setAllowedDeviceTypes(allowedByDeviceId[String(IMEI)] || []);
-  }, [IMEI, allowedByDeviceId]);
+    if (!IMEIs || IMEIs.length === 0) { setAllowedDeviceTypes([]); return; }
+    const union = new Set<string>();
+    IMEIs.forEach(id => (allowedByDeviceId[String(id)] || []).forEach(dt => union.add(dt)));
+    setAllowedDeviceTypes(Array.from(union));
+  }, [IMEIs, allowedByDeviceId]);
+
+  // Maintain per-IMEI device selections and compute union into `device`
+  const handleDevicesForImei = (imei: string, values: string[]) => {
+    setSelectedDevicesByImei(prev => {
+      const next = { ...prev, [imei]: values };
+      const union = Array.from(new Set(Object.values(next).flat())) as string[];
+      setDevice(union);
+      return next;
+    });
+  };
+
+  // When IMEIs change, drop selections for removed IMEIs and recompute union
+  useEffect(() => {
+    setSelectedDevicesByImei(prev => {
+      const next: Record<string, string[]> = {};
+      IMEIs.forEach(id => { if (prev[id]) next[id] = prev[id]; });
+      const union = Array.from(new Set(Object.values(next).flat())) as string[];
+      setDevice(union);
+      return next;
+    });
+  }, [IMEIs]);
   
   const getLatestDp = async () => {
-    if (!IMEI || !auth.user?.id_token) return;
+    if (!IMEIs || IMEIs.length === 0 || !auth.user?.id_token) return;
     try {
-      const result = await getLatestDP(IMEI, auth.user.id_token);
-      setDeviceMap(result.deviceMap as any);
-      setDeviceType(result.deviceTypes as any);
+      const results = await Promise.all(IMEIs.map(imei => getLatestDP(imei, auth.user!.id_token as string)));
+      const combinedMap: Record<string, any> = {};
+      const devTypes = new Set<string>();
+      results.forEach(res => {
+        const devList = Array.isArray(res.deviceTypes) ? res.deviceTypes : Object.values(res.deviceTypes || {});
+        devList.forEach(dt => devTypes.add(dt));
+        Object.entries(res.deviceMap || {}).forEach(([dt, record]: any) => {
+          const tsNew = record?.Timestamp || '';
+          const tsOld = combinedMap[dt]?.Timestamp || '';
+          if (!combinedMap[dt] || tsNew > tsOld) {
+            combinedMap[dt] = record;
+          }
+        });
+      });
+      setDeviceMap(combinedMap as any);
+      setDeviceType(Array.from(devTypes) as any);
       setLastRefresh(dayjs().format('YYYY-MM-DD HH:mm:ss'));
     } catch (err) {
       console.error("getLatestDP error:", err);
@@ -330,11 +371,19 @@ function LoginApp() {
   };
 
   const getDpfromtime = async () => {
-    if (!IMEI || !auth.user?.id_token) return;
+    if (!IMEIs || IMEIs.length === 0 || !auth.user?.id_token) return;
     try {
-      const data = await getDPFromTime(IMEI, startDateTime, endDateTime, auth.user.id_token, timeInterval);
-      setDeviceType(data.deviceTypes || []);
-      setTimeSeriesData(data.items || []);
+      const results = await Promise.all(
+        IMEIs.map(imei => getDPFromTime(imei, startDateTime, endDateTime, auth.user!.id_token as string, timeInterval))
+      );
+      const devTypes = new Set<string>();
+      const itemsAll: any[] = [];
+      results.forEach(r => {
+        (r.deviceTypes || []).forEach(dt => devTypes.add(dt));
+        itemsAll.push(...(r.items || []));
+      });
+      setDeviceType(Array.from(devTypes));
+      setTimeSeriesData(itemsAll);
     } catch (err) {
       console.error("getDPFromTime error:", err);
     }
@@ -342,28 +391,19 @@ function LoginApp() {
 
   // Manual auto-refresh: start only when user clicks "Get New Data"
   const startAutoRefresh = async () => {
-    if (!auth.isAuthenticated || !IMEI || !auth.user?.id_token) return;
+    if (!auth.isAuthenticated || !IMEIs || IMEIs.length === 0 || !auth.user?.id_token) return;
     if (pollerRef.current) {
-      try { pollerRef.current.stop(); } catch {}
+      try { window.clearInterval(pollerRef.current as any); } catch {}
       pollerRef.current = null;
     }
-    const poller = createLatestDpPoller({
-      IMEI,
-      idToken: auth.user.id_token,
-      intervalMs: 5 * 60 * 1000,
-      callback: (result) => {
-        setDeviceMap(result.deviceMap as any);
-        setDeviceType(result.deviceTypes as any);
-        setLastRefresh(dayjs().format('YYYY-MM-DD HH:mm:ss'));
-      },
-    });
-    pollerRef.current = poller;
-    await poller.start();
+    await getLatestDp();
+    const timer = window.setInterval(() => { getLatestDp(); }, 5 * 60 * 1000);
+    pollerRef.current = timer;
   };
 
   const stopAutoRefresh = () => {
     if (pollerRef.current) {
-      try { pollerRef.current.stop(); } catch {}
+      try { window.clearInterval(pollerRef.current as any); } catch {}
       pollerRef.current = null;
     }
   };
@@ -372,7 +412,7 @@ function LoginApp() {
   useEffect(() => {
     stopAutoRefresh();
     return () => stopAutoRefresh();
-  }, [IMEI]);
+  }, [IMEIs]);
 
   // Build chart data for selected device and data type
   const prepareChartData = () => {
@@ -463,13 +503,32 @@ function LoginApp() {
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <div className="panel">
           <div className="section-title">Filters</div>
+          <p>IMEIs:</p>
           <div className="control-row">
-            <SelectIMEIDev IMEI={IMEI_ARR} setValue={setIMEI} setcurrdev={setDevice} setdevarr={setDeviceType} />
+            <SelectIMEIMulti IMEI={IMEI_ARR} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
           </div>
-          <p>Device:</p>
-          <div className="control-row">
-          <DropboxDev devicearr={deviceType} setcurrdev={setDevice} allowed={allowedDeviceTypes} />
-          </div>
+          {IMEIs && IMEIs.length > 0 && (
+            <>
+              <p>Devices per IMEI:</p>
+              {IMEIs.map((id) => {
+                const allowed = allowedByDeviceId[String(id)] || [];
+                const label = (() => {
+                  const item = IMEI_ARR.find((it: any) => String(it?.DeviceID ?? '') === String(id));
+                  return item?.Location ? `${item.Location} (${String(id)})` : String(id);
+                })();
+                return (
+                  <div key={id} className="control-row">
+                    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>IMEI: {label}</div>
+                    <DropboxDev
+                      devicearr={deviceType}
+                      allowed={allowed}
+                      setcurrdev={(values: string[]) => handleDevicesForImei(String(id), values)}
+                    />
+                  </div>
+                );
+              })}
+            </>
+          )}
           <p>Datatype:</p>
           <div className="control-row">
             <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
@@ -514,7 +573,7 @@ function LoginApp() {
       <div className="panel" style={{ marginTop: 16 }}>
         <div className="section-title">Export / Actions</div>
         <div className="control-row">
-          <ExportCSVButton data={timeSeriesData} filename={IMEI + "_" + startDateTime.split(".")[0].replace("T", " ") + "_to_" + endDateTime.split(".")[0].replace("T", " ") + ".csv"} />
+          <ExportCSVButton data={timeSeriesData} filename={(IMEIs && IMEIs.length ? IMEIs.join('-') : 'IMEI') + "_" + startDateTime.split(".")[0].replace("T", " ") + "_to_" + endDateTime.split(".")[0].replace("T", " ") + ".csv"} />
         </div>
       </div>
 

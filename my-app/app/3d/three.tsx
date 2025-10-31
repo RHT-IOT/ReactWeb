@@ -756,7 +756,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
                 {rtDevice3D ? (
                   <>
                     <LatestDashboard deviceMap={deviceMap} device={[rtDevice3D]} dataType={selectedDataTypes3D} compact />
-                    <LatestLineChart deviceMap={deviceMap} deviceType={rtDevice3D} maxPoints={maxPoints3D} title="Realtime Line Chart" height={180} />
+                    <LatestLineChart deviceMap={deviceMap} deviceType={rtDevice3D} dataType={selectedDataTypes3D} maxPoints={maxPoints3D} title="Realtime Line Chart" height={180} />
                   </>
                 ) : (
                   <div>Select a device type to view metrics</div>

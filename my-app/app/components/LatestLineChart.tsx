@@ -8,12 +8,13 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 type LatestLineChartProps = {
   deviceMap: Record<string, any> | undefined;
   deviceType?: string;
+  dataType?: string[];
   maxPoints?: number; // default 10
   title?: string;
   height?: number; // per-chart height, default 180
 };
 
-export default function LatestLineChart({ deviceMap, deviceType, maxPoints = 10, title = "Realtime Line Chart", height = 180 }: LatestLineChartProps) {
+export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPoints = 10, title = "Realtime Line Chart", height = 180 }: LatestLineChartProps) {
   const entry = useMemo(() => {
     if (!deviceMap || !deviceType) return undefined;
     return deviceMap[deviceType];
@@ -22,19 +23,20 @@ export default function LatestLineChart({ deviceMap, deviceType, maxPoints = 10,
   const numericFields = useMemo(() => {
     if (!entry) return [] as string[];
     const meta = new Set(["Timestamp", "DeviceID", "DeviceType"]);
-    return Object.keys(entry).filter(k => !meta.has(k) && typeof entry[k] === 'number');
-  }, [entry]);
+    const keys = Object.keys(entry).filter(k => !meta.has(k) && typeof entry[k] === 'number');
+    return dataType && dataType.length > 0 ? keys.filter(k => dataType.includes(k)) : keys;
+  }, [entry, dataType]);
 
   const [timestamps, setTimestamps] = useState<string[]>([]);
   const [seriesMap, setSeriesMap] = useState<Record<string, number[]>>({});
   const lastTsRef = useRef<string | undefined>(undefined);
 
-  // Reset series when device changes
+  // Reset series when device or selected fields change
   useEffect(() => {
     setTimestamps([]);
     setSeriesMap({});
     lastTsRef.current = undefined;
-  }, [deviceType]);
+  }, [deviceType, dataType]);
 
   // Append point for all numeric fields on each poll
   useEffect(() => {
