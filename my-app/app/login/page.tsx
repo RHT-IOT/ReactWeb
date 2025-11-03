@@ -586,6 +586,14 @@ function LoginApp() {
           <a className="brand-button button-secondary" href="/3d" style={{ marginLeft: 8 }}>View 3D Model</a>
         </div>
       </div>
+
+      {/* Bottom actions */}
+      <div className="panel" style={{ marginTop: 16 }}>
+        <div className="section-title">Control Panel</div>
+        <div className="control-row">
+          <a className="brand-button button-secondary" href="/controlPanel" style={{ marginLeft: 8 }}>Go to Control Panel</a>
+        </div>
+      </div>
       
           
     </div>
