@@ -2,7 +2,7 @@
 
 import { useAuth } from "react-oidc-context";
 import { useEffect, useMemo, useState } from "react";
-import { getIMEIList } from "../lib/aws";
+import { getIMEIList, getLatestDP } from "../lib/aws";
 
 export default function AdminPage() {
   const auth = useAuth();
@@ -12,14 +12,20 @@ export default function AdminPage() {
   const [cpNames, setCpNames] = useState<string[]>([]);
   const [nameInputs, setNameInputs] = useState<Record<string, string>>({});
   const [selectedDeviceType, setSelectedDeviceType] = useState<string>("");
+  const [allowedByDeviceId, setAllowedByDeviceId] = useState<Record<string, string[]>>({});
+  const [latestMap, setLatestMap] = useState<Record<string, any>>({});
+  const [isSendingAll, setIsSendingAll] = useState<boolean>(false);
 
   const deviceTypes = useMemo(() => {
+    const allowed = allowedByDeviceId[String(selectedIMEI)] || [];
+    if (allowed.length > 0) return allowed;
+    // Fallback: derive from cpNames if backend doesn't return dev_access
     const types = Array.from(new Set(cpNames
       .map((n) => (typeof n === "string" && n.includes("/") ? n.split("/")[0] : ""))
       .filter(Boolean)
     )) as string[];
     return types;
-  }, [cpNames]);
+  }, [allowedByDeviceId, selectedIMEI, cpNames]);
 
   const dataTypes = useMemo(() => {
     if (!selectedDeviceType) return [] as string[];
@@ -36,12 +42,32 @@ export default function AdminPage() {
     try {
       const list = await getIMEIList(auth.user.profile.email, auth.user.id_token as string);
       const items = Array.isArray(list.items) ? list.items : [];
+      const access = Array.isArray(list.dev_access) ? list.dev_access : [];
+      const map: Record<string, string[]> = {};
+      items.forEach((it, idx) => {
+        const devs = Array.isArray(access[idx]) ? access[idx].map(String) : [];
+        map[String(it.DeviceID)] = devs;
+      });
+      setAllowedByDeviceId(map);
       setIMEIArr(items);
       const first = String(items?.[0]?.DeviceID || "");
       setSelectedIMEI(first);
+      // Preselect first allowed device for first IMEI if available
+      const allowedForFirst = map[String(items?.[0]?.DeviceID)] || [];
+      setSelectedDeviceType(allowedForFirst[0] || "");
       if (first) await fetchCPNames(first);
     } catch (e) {
       console.error("loadIMEIs error", e);
+    }
+  }
+
+  async function refreshLatest(imei: string) {
+    if (!imei || !auth?.user?.id_token) return;
+    try {
+      const result = await getLatestDP(imei, auth.user.id_token as string);
+      setLatestMap(result.deviceMap || {});
+    } catch (e) {
+      console.error("getLatestDP error", e);
     }
   }
 
@@ -67,8 +93,7 @@ export default function AdminPage() {
         : [];
       setCpNames(names);
       setNameInputs(names.reduce((acc: Record<string, string>, n: string) => { acc[n] = acc[n] ?? ""; return acc; }, {}));
-      const firstDeviceType = Array.isArray(names) && names.length ? String(names[0]).split("/")[0] : "";
-      setSelectedDeviceType(firstDeviceType || "");
+      await refreshLatest(imei);
     } catch (e) {
       console.error("fetchCPNames error", e);
     }
@@ -86,10 +111,14 @@ export default function AdminPage() {
     setNameInputs(prev => ({ ...prev, [name]: value }));
   }
 
-  async function sendCpValue(deviceType: string, dataType: string) {
+  async function sendCpValue(deviceType: string, dataType: string | string[]) {
     if (!auth?.user?.id_token || !selectedIMEI) return;
-    const key = `${deviceType}/${dataType}`;
-    const value = nameInputs[key] ?? "";
+    const types = Array.isArray(dataType) ? dataType : [dataType];
+    const send_arr: [string, string][] = types.map((dt) => {
+      const key = `${deviceType}/${String(dt)}`;
+      const value = nameInputs[key] ?? "";
+      return [key, value];
+    });
     try {
       const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/setCPvalue", {
         method: "POST",
@@ -97,7 +126,7 @@ export default function AdminPage() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${auth.user.id_token}`,
         },
-        body: JSON.stringify({ IMEI: Number(selectedIMEI), DeviceType: deviceType, DataType: dataType, Value: value }),
+        body: JSON.stringify({ IMEI: Number(selectedIMEI), DevDpValue: send_arr }),
       });
       if (!res.ok) {
         console.error("setCPvalue failed", await res.text());
@@ -106,6 +135,38 @@ export default function AdminPage() {
       console.error("setCPvalue error", e);
     }
   }
+
+  // Prefill inputs from latest DP for the selected device without overriding user-entered values
+  useEffect(() => {
+    if (!selectedDeviceType || !latestMap || dataTypes.length === 0) return;
+    const entry = latestMap[selectedDeviceType];
+    if (!entry) return;
+    setNameInputs(prev => {
+      const next = { ...prev } as Record<string, string>;
+      dataTypes.forEach((dt) => {
+        const key = `${selectedDeviceType}/${dt}`;
+        const raw = entry[dt];
+        if (typeof raw !== "undefined" && (prev[key] === undefined || prev[key] === "")) {
+          next[key] = String(raw);
+        }
+      });
+      return next;
+    });
+  }, [latestMap, selectedDeviceType, dataTypes]);
+
+  async function sendAll() {
+    console.log("sendAll:", dataTypes);
+    if (!selectedDeviceType || dataTypes.length === 0) return;
+    setIsSendingAll(true);
+    try {
+      await sendCpValue(selectedDeviceType, dataTypes);
+    } catch (e) {
+      console.error("sendAll error", e);
+    } finally {
+      setIsSendingAll(false);
+    }
+  }
+
 
   return (
     <div className="page-container" style={{ paddingTop: 24 }}>
@@ -140,7 +201,16 @@ export default function AdminPage() {
       </div>
 
       <div className="panel" style={{ marginTop: 16 }}>
-        <div className="section-title">Gauge Grid (Datatype + Input)</div>
+        <div className="section-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span>Gauge Grid (Datatype + Input)</span>
+          <button
+            className="brand-button button-outline"
+            onClick={sendAll}
+            disabled={!selectedDeviceType || dataTypes.length === 0 || isSendingAll}
+          >
+            {isSendingAll ? "Sending..." : "Send All"}
+          </button>
+        </div>
         {!selectedDeviceType || dataTypes.length === 0 ? (
           <pre>No datatypes for device {selectedDeviceType || '-'} (IMEI {selectedIMEI || '-'}).</pre>
         ) : (
@@ -149,7 +219,7 @@ export default function AdminPage() {
               const key = `${selectedDeviceType}/${dt}`;
               return (
                 <div key={idx} className="panel" style={{ padding: 12 }}>
-                  <div className="section-title" style={{ marginBottom: 8 }}>{selectedDeviceType}/{dt}</div>
+                  <div className="section-title" style={{ marginBottom: 8 }}>{dt}</div>
                   <div className="control-row" style={{ gap: 8 }}>
                     <input
                       type="text"
