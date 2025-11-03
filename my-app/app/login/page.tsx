@@ -196,6 +196,7 @@ function LoginApp() {
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-b');
   const [logoSrc, setLogoSrc] = useState('/logos/logo1.png');
   const [mode, setMode] = useState<'mode-light' | 'mode-dark'>('mode-light');
+  const [activeTab, setActiveTab] = useState<'latest' | 'history' | '3d' | 'control'>('latest');
   // Dynamic brand title per theme
   const brandTitle = theme === 'theme-a' ? 'RHT Limited' : theme === 'theme-b' ? 'CMA testing' : 'Natsense';
 
@@ -479,7 +480,18 @@ function LoginApp() {
   }
 
   return (
-    <div className="page-container">
+    <>
+      {/* Fixed left navigation bar */}
+      <nav className="side-nav">
+        <div className="nav-title">Navigation</div>
+        <button className={`brand-button ${activeTab === 'latest' ? '' : 'button-secondary'}`} onClick={() => setActiveTab('latest')}>Latest Datapoint</button>
+        <button className={`brand-button ${activeTab === 'history' ? '' : 'button-secondary'}`} onClick={() => setActiveTab('history')}>History Data</button>
+        <a className="brand-button" href="/3d">3D Mode</a>
+        <a className="brand-button" href="/controlPanel">Control Panel</a>
+      </nav>
+
+      <div className="content-shell">
+        <div className="page-container">
       {/* Theme header with logo and switcher */}
       <div className="brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -498,105 +510,153 @@ function LoginApp() {
       {/* Friendly hint */}
       <div className="panel" style={{ marginTop: 12 }}>
         <div className="section-title">Welcome, {userInfo.username || 'User'}</div>
-        <p style={{ margin: 0, opacity: 0.9 }}>Use Filters to select IMEI, device, data type and time range. Preview data and chart, then export CSV if needed.</p>
+        <p style={{ margin: 0, opacity: 0.9 }}>Use the left menu to switch between Latest datapoint, History data, 3D mode, and Control Panel.</p>
       </div>
 
-      {/* Main grid: Filters and Preview */}
-      <div className="grid-2" style={{ alignItems: 'start' }}>
-        <div className="panel">
-          <div className="section-title">Filters</div>
-          <p>IMEIs:</p>
-          <div className="control-row">
-            <SelectIMEIMulti IMEI={IMEI_ARR} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
-          </div>
-          {IMEIs && IMEIs.length > 0 && (
+      {/* Right content area */}
+      <div style={{ marginTop: 12 }}>
+          {activeTab === 'latest' && (
             <>
-              <p>Devices per IMEI:</p>
-              {IMEIs.map((id) => {
-                const allowed = allowedByDeviceId[String(id)] || [];
-                const label = (() => {
-                  const item = IMEI_ARR.find((it: any) => String(it?.DeviceID ?? '') === String(id));
-                  return item?.Location ? `${item.Location} (${String(id)})` : String(id);
-                })();
-                return (
-                  <div key={id} className="control-row">
-                    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>IMEI: {label}</div>
-                    <DropboxDev
-                      devicearr={deviceType}
-                      allowed={allowed}
-                      setcurrdev={(values: string[]) => handleDevicesForImei(String(id), values)}
-                    />
+              <div className="grid-2" style={{ alignItems: 'start' }}>
+                <div className="panel">
+                  <div className="section-title">Filters</div>
+                  <p>IMEIs:</p>
+                  <div className="control-row">
+                    <SelectIMEIMulti IMEI={IMEI_ARR} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
                   </div>
-                );
-              })}
+                  {IMEIs && IMEIs.length > 0 && (
+                    <>
+                      <p>Devices per IMEI:</p>
+                      {IMEIs.map((id) => {
+                        const allowed = allowedByDeviceId[String(id)] || [];
+                        const label = (() => {
+                          const item = IMEI_ARR.find((it: any) => String(it?.DeviceID ?? '') === String(id));
+                          return item?.Location ? `${item.Location} (${String(id)})` : String(id);
+                        })();
+                        return (
+                          <div key={id} className="control-row">
+                            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>IMEI: {label}</div>
+                            <DropboxDev
+                              devicearr={deviceType}
+                              allowed={allowed}
+                              setcurrdev={(values: string[]) => handleDevicesForImei(String(id), values)}
+                            />
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                  <p>Datatype:</p>
+                  <div className="control-row">
+                    <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
+                  </div>
+                  <div className="control-row">
+                    <button className="brand-button" onClick={() => { getLatestDp(); startAutoRefresh(); }} style={{ marginRight: 8 }}>Get New Data</button>
+                    <button className="brand-button button-secondary" onClick={() => stopAutoRefresh()}>Stop Auto Refresh</button>
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <div className="section-title">Latest Data Dashboard</div>
+                  <div style={{ marginTop: 4, marginBottom: 8, opacity: 0.7, fontSize: 12 }}>
+                    Last call: {lastRefresh || '-'}
+                  </div>
+                  <LatestDashboard deviceMap={deviceMap} device={device} dataType={dataType} />
+                </div>
+              </div>
             </>
           )}
-          <p>Datatype:</p>
-          <div className="control-row">
-            <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
-          </div>
-          
-          <p>Average Interval:</p>
-          <div className="control-row">
-            <DropboxTime setValue = {setTimeInterval}/>
-          </div>
-          <div className="control-row">
-            <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime} />
-          </div>
-          <div className="control-row">
-            <button className="brand-button" onClick={() => { getLatestDp(); startAutoRefresh(); }} style={{ marginRight: 8 }}>Get New Data</button>
-            <button className="brand-button button-secondary" onClick={getDpfromtime}>Load Range</button>
-          </div>
-        </div>
 
-        <div className="panel">
-          <div className="section-title">Latest Data Dashboard</div>
-          <div style={{ marginTop: 4, marginBottom: 8, opacity: 0.7, fontSize: 12 }}>
-            Last call: {lastRefresh || '-'}
-          </div>
-          <LatestDashboard deviceMap={deviceMap} device={device} dataType={dataType} />
-          {chartData.datasets.length > 0 && (
-            <div className="panel" style={{ marginTop: '16px' }}>
-              <h3>Time Series Chart: {Array.isArray(device) ? device.join(', ') : device} - {Array.isArray(dataType) ? dataType.join(', ') : dataType}</h3>
-              <div style={{ height: 500 }}>
-                <Line data={chartData} options={options} />
+          {activeTab === 'history' && (
+            <>
+              <div className="grid-2" style={{ alignItems: 'start' }}>
+                <div className="panel">
+                  <div className="section-title">Filters</div>
+                  <p>IMEIs:</p>
+                  <div className="control-row">
+                    <SelectIMEIMulti IMEI={IMEI_ARR} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
+                  </div>
+                  {IMEIs && IMEIs.length > 0 && (
+                    <>
+                      <p>Devices per IMEI:</p>
+                      {IMEIs.map((id) => {
+                        const allowed = allowedByDeviceId[String(id)] || [];
+                        const label = (() => {
+                          const item = IMEI_ARR.find((it: any) => String(it?.DeviceID ?? '') === String(id));
+                          return item?.Location ? `${item.Location} (${String(id)})` : String(id);
+                        })();
+                        return (
+                          <div key={id} className="control-row">
+                            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>IMEI: {label}</div>
+                            <DropboxDev
+                              devicearr={deviceType}
+                              allowed={allowed}
+                              setcurrdev={(values: string[]) => handleDevicesForImei(String(id), values)}
+                            />
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                  <p>Datatype:</p>
+                  <div className="control-row">
+                    <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
+                  </div>
+                  <p>Average Interval:</p>
+                  <div className="control-row">
+                    <DropboxTime setValue={setTimeInterval} />
+                  </div>
+                  <div className="control-row">
+                    <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime} />
+                  </div>
+                  <div className="control-row">
+                    <button className="brand-button button-secondary" onClick={getDpfromtime}>Load Range</button>
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <div className="section-title">History Chart</div>
+                  {chartData.datasets.length > 0 && (
+                    <div style={{ height: 500 }}>
+                      <Line data={chartData} options={options} />
+                    </div>
+                  )}
+                  {timeSeriesData.length > 0 && chartData.datasets.length === 0 && (
+                    <div style={{ marginTop: '20px', color: 'orange' }}>
+                      <p>No data available for {Array.isArray(device) ? device.join(', ') : device} - {Array.isArray(dataType) ? dataType.join(', ') : dataType}. Please select a different data type.</p>
+                    </div>
+                  )}
+                  <div className="panel" style={{ marginTop: 16 }}>
+                    <div className="section-title">Export CSV</div>
+                    <div className="control-row">
+                      <ExportCSVButton data={timeSeriesData} filename={(IMEIs && IMEIs.length ? IMEIs.join('-') : 'IMEI') + "_" + startDateTime.split('.')[0].replace('T', ' ') + "_to_" + endDateTime.split('.')[0].replace('T', ' ') + ".csv"} />
+                    </div>
+                  </div>
+                </div>
               </div>
+            </>
+          )}
+
+          {activeTab === '3d' && (
+            <div className="panel">
+              <div className="section-title">3D Mode</div>
+              <p>Open the interactive 3D model for your devices.</p>
+              <a className="brand-button button-secondary" href="/3d" style={{ marginTop: 8 }}>View 3D Model</a>
             </div>
           )}
-          {timeSeriesData.length > 0 && chartData.datasets.length === 0 && (
-            <div style={{ marginTop: '20px', color: 'orange' }}>
-              <p>No data available for {Array.isArray(device) ? device.join(', ') : device} - {Array.isArray(dataType) ? dataType.join(', ') : dataType}. Please select a different data type.</p>
+
+          {activeTab === 'control' && (
+            <div className="panel">
+              <div className="section-title">Control Panel</div>
+              <p>Send control commands to your selected devices.</p>
+              <a className="brand-button button-secondary" href="/controlPanel" style={{ marginTop: 8 }}>Go to Control Panel</a>
             </div>
           )}
-        </div>
       </div>
-
-      {/* Bottom actions */}
-      <div className="panel" style={{ marginTop: 16 }}>
-        <div className="section-title">Export / Actions</div>
-        <div className="control-row">
-          <ExportCSVButton data={timeSeriesData} filename={(IMEIs && IMEIs.length ? IMEIs.join('-') : 'IMEI') + "_" + startDateTime.split(".")[0].replace("T", " ") + "_to_" + endDateTime.split(".")[0].replace("T", " ") + ".csv"} />
-        </div>
       </div>
-
-      {/* Bottom actions */}
-      <div className="panel" style={{ marginTop: 16 }}>
-        <div className="section-title">View in 3D</div>
-        <div className="control-row">
-          <a className="brand-button button-secondary" href="/3d" style={{ marginLeft: 8 }}>View 3D Model</a>
-        </div>
+      {/* Close content shell */}
       </div>
-
-      {/* Bottom actions */}
-      <div className="panel" style={{ marginTop: 16 }}>
-        <div className="section-title">Control Panel</div>
-        <div className="control-row">
-          <a className="brand-button button-secondary" href="/controlPanel" style={{ marginLeft: 8 }}>Go to Control Panel</a>
-        </div>
-      </div>
-      
-          
-    </div>
+    </>
   );
 }
 

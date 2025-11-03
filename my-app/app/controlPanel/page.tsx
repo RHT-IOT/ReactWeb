@@ -6,6 +6,15 @@ import { getIMEIList, getLatestDP } from "../lib/aws";
 
 export default function AdminPage() {
   const auth = useAuth();
+  // Apply saved theme and mode so background matches other pages
+  useEffect(() => {
+    const savedTheme = (typeof window !== 'undefined' && localStorage.getItem('theme-name')) as 'theme-a' | 'theme-b' | 'theme-c' | null;
+    const savedMode = (typeof window !== 'undefined' && localStorage.getItem('mode-name')) as 'mode-light' | 'mode-dark' | null;
+    const cls = document.body.classList;
+    cls.remove('theme-a', 'theme-b', 'theme-c', 'mode-light', 'mode-dark');
+    cls.add(savedTheme || 'theme-a');
+    cls.add(savedMode || 'mode-light');
+  }, []);
 
   const [imeiArr, setIMEIArr] = useState<any[]>([]);
   const [selectedIMEI, setSelectedIMEI] = useState<string>("");
