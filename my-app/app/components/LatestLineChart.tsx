@@ -5,6 +5,9 @@ import { Line } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
+type HistoryEntry = { timestamps: string[]; seriesMap: Record<string, number[]> };
+type HistoryStore = Record<string, HistoryEntry>;
+
 type LatestLineChartProps = {
   deviceMap: Record<string, any> | undefined;
   deviceType?: string;
@@ -12,9 +15,10 @@ type LatestLineChartProps = {
   maxPoints?: number; // default 10
   title?: string;
   height?: number; // per-chart height, default 180
+  historyRef?: React.MutableRefObject<HistoryStore>;
 };
 
-export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPoints = 10, title = "Realtime Line Chart", height = 180 }: LatestLineChartProps) {
+export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPoints = 10, title = "Realtime Line Chart", height = 180, historyRef }: LatestLineChartProps) {
   const entry = useMemo(() => {
     if (!deviceMap || !deviceType) return undefined;
     return deviceMap[deviceType];
@@ -29,54 +33,73 @@ export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPo
 
   const [timestamps, setTimestamps] = useState<string[]>([]);
   const [seriesMap, setSeriesMap] = useState<Record<string, number[]>>({});
-  const lastTsRef = useRef<string | undefined>(undefined);
+  const dataTypeKey = useMemo(() => JSON.stringify([...(dataType ?? [])].sort()), [dataType]);
 
-  // Reset series when device or selected fields change
+  // Initialize local render state from history when device changes
   useEffect(() => {
-    setTimestamps([]);
-    setSeriesMap({});
-    lastTsRef.current = undefined;
-  }, [deviceType, dataType]);
+    if (!deviceType) return;
+    const store = historyRef?.current;
+    const hist = store?.[deviceType];
+    if (hist) {
+      setTimestamps([...hist.timestamps]);
+      setSeriesMap({ ...hist.seriesMap });
+    }
+  }, [deviceType, historyRef]);
 
-  // Append point for all numeric fields on each poll
+  // Append a new point for all numeric fields on each poll, always keeping up to maxPoints; persist by deviceType
   useEffect(() => {
-    if (!entry || numericFields.length === 0) return;
+    if (!entry || numericFields.length === 0 || !deviceType) return;
     const tsRaw = entry["Timestamp"];
     let ts = typeof tsRaw === 'string' ? tsRaw : String(tsRaw ?? '');
     if (ts.includes('T')) ts = ts.split('.') [0].replace('T', ' ');
 
-    const isNew = lastTsRef.current !== ts;
-    if (isNew) {
-      setTimestamps(prev => {
-        const next = [...prev, ts];
-        return next.length > maxPoints ? next.slice(next.length - maxPoints) : next;
-      });
-      lastTsRef.current = ts;
+    const store = historyRef?.current;
+    const existing = store?.[deviceType] || { timestamps: [], seriesMap: {} };
+    const nextTimestamps = [...existing.timestamps, ts];
+    const trimmedTimestamps = nextTimestamps.length > maxPoints ? nextTimestamps.slice(nextTimestamps.length - maxPoints) : nextTimestamps;
+    const nextSeries: Record<string, number[]> = { ...existing.seriesMap };
+    numericFields.forEach((field) => {
+      const val = entry[field];
+      if (typeof val !== 'number' || !Number.isFinite(val)) return;
+      const arr = nextSeries[field] ? [...nextSeries[field]] : [];
+      arr.push(Number(val));
+      nextSeries[field] = arr.length > maxPoints ? arr.slice(arr.length - maxPoints) : arr;
+    });
+    // Persist to store (keep other fields as-is)
+    if (store) {
+      store[deviceType] = { timestamps: trimmedTimestamps, seriesMap: nextSeries };
     }
+    // Reflect into local render state
+    setTimestamps(trimmedTimestamps);
+    setSeriesMap(nextSeries);
+  }, [entry, numericFields, maxPoints, deviceType, historyRef]);
 
-    setSeriesMap(prev => {
-      const next: Record<string, number[]> = { ...prev };
-      numericFields.forEach((field) => {
-        const val = entry[field];
-        if (typeof val !== 'number' || !Number.isFinite(val)) return;
-        const arr = next[field] ? [...next[field]] : [];
-        if (isNew) {
-          arr.push(Number(val));
-        } else if (arr.length > 0) {
-          arr[arr.length - 1] = Number(val);
-        } else {
-          arr.push(Number(val));
-        }
-        if (arr.length > maxPoints) {
-          next[field] = arr.slice(arr.length - maxPoints);
-        } else {
-          next[field] = arr;
-        }
+  // When maxPoints changes, trim history for all devices in the store
+  useEffect(() => {
+    const store = historyRef?.current;
+    if (!store) return;
+    Object.keys(store).forEach((dev) => {
+      const hist = store[dev];
+      if (!hist) return;
+      if (hist.timestamps.length > maxPoints) {
+        hist.timestamps = hist.timestamps.slice(hist.timestamps.length - maxPoints);
+      }
+      Object.keys(hist.seriesMap).forEach((k) => {
+        const arr = hist.seriesMap[k] || [];
+        if (arr.length > maxPoints) hist.seriesMap[k] = arr.slice(arr.length - maxPoints);
       });
-      Object.keys(next).forEach((k) => { if (!numericFields.includes(k)) delete next[k]; });
+    });
+    // Also trim current view
+    setTimestamps(prev => prev.length > maxPoints ? prev.slice(prev.length - maxPoints) : prev);
+    setSeriesMap(prev => {
+      const next: Record<string, number[]> = {};
+      Object.keys(prev).forEach(k => {
+        const arr = prev[k] || [];
+        next[k] = arr.length > maxPoints ? arr.slice(arr.length - maxPoints) : arr;
+      });
       return next;
     });
-  }, [entry, numericFields, maxPoints]);
+  }, [maxPoints, historyRef]);
 
   const COLORS = ['#36a2eb','#ff6384','#4bc0c0','#9966ff','#ff9f40','#2ecc71','#e74c3c','#3498db','#9b59b6','#16a085'];
 
@@ -92,7 +115,7 @@ export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPo
 
   return (
     <div className="panel" style={{ marginTop: 16 }}>
-      <div className="section-title">{title}</div>
+      <div className="section-title" style={{ fontSize: 20, fontWeight: 800 }}>{title}</div>
       {numericFields.map((field, idx) => {
         const data = {
           labels: timestamps,
@@ -110,7 +133,7 @@ export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPo
           interaction: { mode: 'nearest', intersect: false },
           plugins: {
             legend: { display: false },
-            title: { display: true, text: deviceType ? `${deviceType} • ${field}` : field },
+            title: { display: true, text: deviceType ? `${deviceType} • ${field}` : field, font: { size: 16, weight: 'bold' } },
             tooltip: {
               enabled: true,
               displayColors: false,
@@ -123,7 +146,7 @@ export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPo
               }
             }
           },
-          scales: { x: { display: true, title: { display: true, text: 'Time' } }, y: { display: true } }
+          scales: { x: { display: true, title: { display: false }, ticks: { display: false } }, y: { display: true } }
         };
         return (
           <div key={field} style={{ height, marginBottom: 10 }}>

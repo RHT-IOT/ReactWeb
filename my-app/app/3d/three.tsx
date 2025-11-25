@@ -1,8 +1,8 @@
 "use client";
 // Map3DComponent.jsx
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
-import { OrbitControls, Html, useGLTF, useProgress } from "@react-three/drei";
+import { OrbitControls, Html, useGLTF, Environment } from "@react-three/drei";
 import * as THREE from "three";
 import * as d3 from "d3-geo";
 import { useAuth } from "react-oidc-context";
@@ -36,10 +36,7 @@ function getShapes(feature) {
   return shapes;
 }
 
-function FurnitureModel({ position = [0, 0, 10], scale = 0.08 }) {
-  const gltf: any = useGLTF("/3dmodel/Furniture.glb");
-  return <primitive object={gltf.scene} position={position as any} scale={scale as any} />;
-}
+
 // Optionally preload to avoid a slight delay on first click
 // (safe to leave as a comment if not desired)
 // (useGLTF as any).preload?.("/3dmodel/Furniture.glb");
@@ -189,15 +186,18 @@ function GradientPillar({ height = 60, radius = 50, topColor = "#ff4040", bottom
       }
     `,
     fragmentShader: `
+      precision mediump float;
       varying vec3 vNormal;
       varying vec3 vViewDir;
       uniform vec3 uGlowColor;
       uniform float uTime;
       uniform float uStrength;
-      float fres = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 2.0);
-      float pulse = 0.6 + 0.4 * sin(uTime * 2.0);
-      float alpha = fres * pulse * uStrength;
-      gl_FragColor = vec4(uGlowColor, alpha);
+      void main() {
+        float fres = pow(1.0 - max(dot(normalize(vNormal), normalize(vViewDir)), 0.0), 2.0);
+        float pulse = 0.6 + 0.4 * sin(uTime * 2.0);
+        float alpha = fres * pulse * uStrength;
+        gl_FragColor = vec4(uGlowColor, alpha);
+      }
     `
   }), [glowColor, glowStrength]);
 
@@ -487,31 +487,99 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const [currentRegion, setCurrentRegion] = useState<string>("China");
   const [mode, setMode] = useState<"map" | "region" | "detail">("map");
   const [selectedMeshName, setSelectedMeshName] = useState<string | null>(null);
+  const [selectedMeshNames, setSelectedMeshNames] = useState<string[]>([]);
+  const [detailModelLoaded, setDetailModelLoaded] = useState<boolean>(false);
+  const [panelVisible, setPanelVisible] = useState<boolean>(true);
   const [imeiList, setImeiList] = useState<DeviceInfo[]>([]);
   const [IMEI, setIMEI] = useState<string>("");
   const [deviceMap, setDeviceMap] = useState<any>({});
   const [visibleDevices, setVisibleDevices] = useState<DeviceInfo[]>([]);
   const pollerRef = useRef<any>(null);
+  const chartHistoryRef = useRef<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>>({});
   const [allowedByDeviceId, setAllowedByDeviceId] = useState<Record<string, string[]>>({});
   const [allowedDeviceTypes3D, setAllowedDeviceTypes3D] = useState<string[]>([]);
+  const [selectedDeviceTypes3D, setSelectedDeviceTypes3D] = useState<string[]>([]);
+  // Track whether Ctrl/Shift is pressed to enable multi-select interactions
+  const [multiKeyDown, setMultiKeyDown] = useState<boolean>(false);
   const [rtDevice3D, setRtDevice3D] = useState<string>("");
-  const [updateIntervalMs, setUpdateIntervalMs] = useState<number>(5 * 60 * 1000);
+  const [updateIntervalMs, setUpdateIntervalMs] = useState<number>(10_000);
   const [maxPoints3D, setMaxPoints3D] = useState<number>(10);
   const [selectedDataTypes3D, setSelectedDataTypes3D] = useState<string[]>([]);
   const availableDataTypes3D = useMemo(() => {
-    const entry = deviceMap && rtDevice3D ? deviceMap[rtDevice3D] : undefined;
-    if (!entry || typeof entry !== 'object') return [] as string[];
     const meta = new Set(["Timestamp", "DeviceID", "DeviceType"]);
-    return Object.keys(entry).filter(k => !meta.has(k) && typeof entry[k] === 'number');
-  }, [deviceMap, rtDevice3D]);
+    const types = (selectedDeviceTypes3D && selectedDeviceTypes3D.length > 0)
+      ? selectedDeviceTypes3D
+      : (deviceMap && typeof deviceMap === 'object' ? Object.keys(deviceMap) : []);
+    const union = new Set<string>();
+    types.forEach((t) => {
+      const entry = deviceMap?.[t];
+      if (!entry || typeof entry !== 'object') return;
+      Object.keys(entry).forEach((k) => {
+        if (!meta.has(k) && typeof entry[k] === 'number') union.add(k);
+      });
+    });
+    return Array.from(union);
+  }, [deviceMap, selectedDeviceTypes3D]);
+
+  // Listen for Ctrl/Shift to toggle multi-select mode for meshes and dropdown
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Meta') {
+        setMultiKeyDown(true);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Meta') {
+        setMultiKeyDown(false);
+      }
+    };
+    const onBlur = () => setMultiKeyDown(false);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
 
   useEffect(() => {
-    const allowed = new Set(availableDataTypes3D);
     setSelectedDataTypes3D(prev => {
-      const intersection = prev.filter(d => allowed.has(d));
-      return intersection.length > 0 ? intersection : availableDataTypes3D;
+      const allowedSet = new Set(availableDataTypes3D);
+      const intersection = prev.filter(d => allowedSet.has(d));
+      const next = intersection.length > 0 ? intersection : availableDataTypes3D;
+      const sameContent = prev.length === next.length && prev.every(v => next.includes(v));
+      return sameContent ? prev : next;
     });
   }, [availableDataTypes3D]);
+
+  // Persist latest points for ALL device types to shared history on each poll
+  useEffect(() => {
+    if (!deviceMap || typeof deviceMap !== 'object') return;
+    const store = chartHistoryRef.current;
+    const meta = new Set(["Timestamp", "DeviceID", "DeviceType"]);
+    Object.keys(deviceMap).forEach((dt) => {
+      const entry = deviceMap[dt];
+      if (!entry || typeof entry !== 'object') return;
+      const tsRaw = entry["Timestamp"];
+      let ts = typeof tsRaw === 'string' ? tsRaw : String(tsRaw ?? '');
+      if (ts.includes('T')) ts = ts.split('.') [0].replace('T', ' ');
+      const existing = store[dt] || { timestamps: [], seriesMap: {} };
+      const nextTimestamps = [...existing.timestamps, ts];
+      const trimmedTimestamps = nextTimestamps.length > maxPoints3D ? nextTimestamps.slice(nextTimestamps.length - maxPoints3D) : nextTimestamps;
+      const nextSeries: Record<string, number[]> = { ...existing.seriesMap };
+      Object.keys(entry).forEach((k) => {
+        if (meta.has(k)) return;
+        const val = entry[k];
+        if (typeof val !== 'number' || !Number.isFinite(val)) return;
+        const arr = nextSeries[k] ? [...nextSeries[k]] : [];
+        arr.push(Number(val));
+        nextSeries[k] = arr.length > maxPoints3D ? arr.slice(arr.length - maxPoints3D) : arr;
+      });
+      store[dt] = { timestamps: trimmedTimestamps, seriesMap: nextSeries };
+    });
+  }, [deviceMap, maxPoints3D]);
 
   // Track region based on selected label (keep region when selecting POIs)
   useEffect(() => {
@@ -520,15 +588,25 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     if (selectedLabel == null) {
       setCurrentRegion("China");
       setMode("map");
+      setPanelVisible(true);
     } else if (selectedLabel === "Hong Kong") {
       setCurrentRegion("Hong Kong");
       setMode("region");
+      setPanelVisible(true);
     } else if (selectedLabel === "Macau") {
       setCurrentRegion("Macau");
       setMode("region");
+      setPanelVisible(true);
     } else if (selectedLabel === "BOCYH") {
       setCurrentRegion("Macau");
       setMode("detail");
+      setDetailModelLoaded(false);
+      setPanelVisible(true);
+    } else if (selectedLabel === "BOCDSS") {
+      setCurrentRegion("Macau");
+      setMode("detail");
+      setDetailModelLoaded(false);
+      setPanelVisible(true);
     } else {
       // keep current region and return to map mode
       setMode("map");
@@ -632,12 +710,36 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     return allowed?.length ? keys.filter(k => allowed.includes(k)) : keys;
   }, [deviceMap, allowedDeviceTypes3D]);
 
-  // When a mesh is clicked, select it and map to a realtime device immediately
-  const handleMeshSelected = useCallback((name: string | null) => {
-    setSelectedMeshName(name);
-    if (!name) return;
+  // Check if a mesh name maps to an allowed realtime device option
+  const isMeshAllowed = useCallback((name: string | null) => {
+    if (!name) return false;
     const opts = realtimeDeviceOptions3D;
-    if (!opts || opts.length === 0) return;
+    if (!opts || opts.length === 0) return false;
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const meshNorm = norm(name);
+    if (opts.includes(name)) return true;
+    return !!opts.find(o => {
+      const on = norm(o);
+      return on.includes(meshNorm) || meshNorm.includes(on);
+    });
+  }, [realtimeDeviceOptions3D]);
+
+  // When a mesh is clicked, select single or multi depending on Ctrl/Shift keys
+  const handleMeshSelected = useCallback((name: string | null) => {
+    if (!name) { setSelectedMeshName(null); return; }
+    // Gate selection: only allow if mesh maps to an allowed device type
+    if (!isMeshAllowed(name)) return;
+    setSelectedMeshName(name);
+    setSelectedMeshNames((prev) => {
+      if (multiKeyDown) {
+        if (prev.includes(name)) {
+          return prev.filter((n) => n !== name);
+        }
+        return [...prev, name];
+      }
+      return [name];
+    });
+    const opts = realtimeDeviceOptions3D;
     const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const meshNorm = norm(name);
     let next: string | null = null;
@@ -649,13 +751,32 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
         return on.includes(meshNorm) || meshNorm.includes(on);
       }) || null;
     }
-    setRtDevice3D(next || opts[0]);
-  }, [realtimeDeviceOptions3D]);
+    const chosen = next || opts[0];
+    setRtDevice3D(chosen);
+    setSelectedDeviceTypes3D(prev => {
+      if (multiKeyDown) {
+        const set = new Set(prev);
+        if (set.has(chosen)) set.delete(chosen); else set.add(chosen);
+        return Array.from(set);
+      }
+      // Without Ctrl/Shift, switch to single selection
+      return [chosen];
+    });
+  }, [realtimeDeviceOptions3D, isMeshAllowed, multiKeyDown]);
 
-  // Select default realtime device when options change
+  // Keep multi-select in sync with available options and select a sensible default
   useEffect(() => {
     const opts = realtimeDeviceOptions3D;
-    if (!opts || opts.length === 0) { setRtDevice3D(""); return; }
+    if (!opts || opts.length === 0) { setRtDevice3D(""); setSelectedDeviceTypes3D([]); return; }
+    // Sync multi-select with options, preserving prior selections when possible
+    setSelectedDeviceTypes3D(prev => {
+      const allowedSet = new Set(opts);
+      const intersection = prev.filter(d => allowedSet.has(d));
+      const next = intersection.length > 0 ? intersection : opts;
+      const same = prev.length === next.length && prev.every(v => next.includes(v));
+      return same ? prev : next;
+    });
+    // Maintain rtDevice3D as last selected or fallback
     if (!rtDevice3D || !opts.includes(rtDevice3D)) {
       if (selectedMeshName && opts.includes(selectedMeshName)) {
         setRtDevice3D(selectedMeshName);
@@ -674,15 +795,62 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     <div style={{ display: "flex", width: "100%", height: "100vh" }}>
       <div style={{ flex: "1 1 auto", position: "relative" ,width: "70%",}}>
         <div style={{ position: "absolute", top: 16, left: 16, zIndex: 1, padding: "8px 12px", borderRadius: 8 }}>
-          <button className="brand-button" onClick={backMainMap}>back to main map</button>
+          <button className="brand-button" onClick={backMainMap}>Back to main map</button>
         </div>
-        <Canvas camera={{ position: [33.4, -202.9, 447.9], fov: 45 }}>
+        <div style={{ position: "absolute", top: 70, left: 16, zIndex: 1, padding: "8px 12px", borderRadius: 8, backgroundColor: "rgba(0, 0, 0, 0)" }}>
+        <a href="/login"><img src="2d.png" alt="Latest" style={{ height: '36px' }}/></a>
+        </div>
+        <Canvas
+          camera={{ position: [33.4, -202.9, 447.9], fov: 45 }}
+          onCreated={({ gl }) => {
+            // Align renderer with glTF viewer defaults for correct texture appearance
+            gl.outputColorSpace = THREE.SRGBColorSpace;
+            gl.toneMapping = THREE.ACESFilmicToneMapping;
+            gl.toneMappingExposure = 1.0;
+            gl.physicallyCorrectLights = true;
+          }}
+        >
           <CanvasDecor mode={mode} currentRegion={currentRegion} />
+          {/* Add environment lighting for PBR materials to look correct */}
+          <Environment preset="city" background={false} />
           <ambientLight intensity={0.5} />
           <directionalLight position={[100, 100, 200]} intensity={0.8} />
            {mode !== "detail" && <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} showPillars={mode === "region"} showMarkers={mode === "map"} onFilteredDevices={setVisibleDevices} />}
-          {mode === "detail" && (
-            <FurnitureDetail controlsRef={controlsRef} onMeshSelected={handleMeshSelected} selectedMeshName={selectedMeshName} />
+          {mode === "detail" && selectedLabel === "BOCYH" && (
+            <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
+              <CMADetail
+                glbName={"/3dmodel/1403.glb"}
+                controlsRef={controlsRef}
+                onMeshSelected={handleMeshSelected}
+                selectedMeshNames={selectedMeshNames}
+                isMeshAllowed={isMeshAllowed}
+                onModelLoaded={() => setDetailModelLoaded(true)}
+                showInlineChart={!panelVisible}
+                chartDeviceMap={deviceMap}
+                chartDeviceTypes={selectedDeviceTypes3D}
+                chartDataTypes={selectedDataTypes3D}
+                chartMaxPoints={maxPoints3D}
+                chartHistoryRef={chartHistoryRef}
+              />
+            </Suspense>
+          )}
+          {mode === "detail" && selectedLabel === "BOCDSS" && (
+            <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
+              <CMADetail
+                glbName={"/3dmodel/CMA+.glb"}
+                controlsRef={controlsRef}
+                onMeshSelected={handleMeshSelected}
+                selectedMeshNames={selectedMeshNames}
+                isMeshAllowed={isMeshAllowed}
+                onModelLoaded={() => setDetailModelLoaded(true)}
+                showInlineChart={!panelVisible}
+                chartDeviceMap={deviceMap}
+                chartDeviceTypes={selectedDeviceTypes3D}
+                chartDataTypes={selectedDataTypes3D}
+                chartMaxPoints={maxPoints3D}
+                chartHistoryRef={chartHistoryRef}
+              />
+            </Suspense>
           )}
           <CameraInit
             controlsRef={controlsRef}
@@ -691,41 +859,67 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           <OrbitControls ref={controlsRef} enableDamping dampingFactor={0.08} />
         </Canvas>
       </div>
-      {mode === "detail" && (
+      {mode === "detail" && detailModelLoaded && panelVisible && (
         <div style={{ flex: "0 0 400px", width: 400, minWidth: 320, flexShrink: 0, background: "rgba(1, 7, 22, 0.9)", color: "#fff", padding: 12, overflowY: "auto" }}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Detail Metrics</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <div style={{ fontWeight: 700 }}>Detail Metrics</div>
+            <button
+              onClick={() => setPanelVisible(false)}
+              title="Hide panel"
+              style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, padding: "4px 8px", cursor: "pointer" }}
+            >
+              →
+            </button>
+          </div>
           {IMEI ? (
-            selectedMeshName ? (
+            selectedMeshNames.length > 0 ? (
               <>
                 <div style={{ marginBottom: 12 }}>
                   <div className="control-row" style={{ marginBottom: 8}}>
-                    <label style={{ marginRight: 8 }}>Realtime Device:</label>
+                    <label style={{ marginRight: 8 }}>Realtime Devices:</label>
                     <select
-                      value={rtDevice3D || ""}
-                      onChange={(e) => setRtDevice3D(e.target.value)}
-                      style={{background: "rgba(255, 255, 255, 0.9)", color: "rgba(0, 0, 0, 0.9)"}}
+                      multiple
+                      value={selectedDeviceTypes3D}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions).map(o => o.value);
+                        setSelectedDeviceTypes3D(selected);
+                        const last = selected[selected.length - 1];
+                        if (last) setRtDevice3D(last);
+                      }}
+                      size={Math.min(6, Math.max(2, realtimeDeviceOptions3D.length))}
+                      style={{ background: "rgba(255, 255, 255, 0.9)", color: "rgba(0, 0, 0, 0.9)", minWidth: 220 }}
                     >
                       {realtimeDeviceOptions3D.map((d) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </select>
+                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+                      Tip: Use Ctrl/Shift to multi-select. Click meshes to toggle.
+                    </div>
                   </div>
                   <div className="control-row" style={{ marginBottom: 8 }}>
-                    <label style={{ marginRight: 8 }}>Data Types:</label>
-                    <select
-                      multiple
-                      value={selectedDataTypes3D}
-                      onChange={(e) => {
-                        const opts = Array.from(e.target.selectedOptions).map(o => o.value);
-                        setSelectedDataTypes3D(opts);
-                      }}
-                      size={Math.min(6, Math.max(3, (availableDataTypes3D?.length || 0)))}
-                      style={{ width: "100%" , background: "rgba(255, 255, 255, 0.9)", color: "rgba(0, 0, 0, 0.9)"}}
-                    >
-                      {availableDataTypes3D.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
+                    <label style={{ marginRight: 8, display: "block" }}>Data Types:</label>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      {availableDataTypes3D.map((t) => {
+                        const checked = selectedDataTypes3D.includes(t);
+                        return (
+                          <label key={t} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.9)", color: "rgba(0,0,0,0.9)", padding: "6px 8px", borderRadius: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setSelectedDataTypes3D(prev => {
+                                  const set = new Set(prev);
+                                  if (e.target.checked) set.add(t); else set.delete(t);
+                                  return Array.from(set);
+                                });
+                              }}
+                            />
+                            {t}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div className="control-row" style={{ marginBottom: 8 }}>
                     <label style={{ marginRight: 8 }}>Update Interval:</label>
@@ -753,13 +947,15 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
                     />
                   </div>
                 </div>
-                {rtDevice3D ? (
-                  <>
-                    <LatestDashboard deviceMap={deviceMap} device={[rtDevice3D]} dataType={selectedDataTypes3D} compact />
-                    <LatestLineChart deviceMap={deviceMap} deviceType={rtDevice3D} dataType={selectedDataTypes3D} maxPoints={maxPoints3D} title="Realtime Line Chart" height={180} />
-                  </>
+                {selectedDeviceTypes3D && selectedDeviceTypes3D.length > 0 ? (
+                  selectedDeviceTypes3D.map((dt) => (
+                    <React.Fragment key={dt}>
+                      <LatestDashboard deviceMap={deviceMap} device={[dt]} dataType={selectedDataTypes3D} compact />
+                      <LatestLineChart deviceMap={deviceMap} deviceType={dt} dataType={selectedDataTypes3D} maxPoints={maxPoints3D} title="Realtime Line Chart" height={180} historyRef={chartHistoryRef} />
+                    </React.Fragment>
+                  ))
                 ) : (
-                  <div>Select a device type to view metrics</div>
+                  <div>Select one or more device types to view metrics</div>
                 )}
               </>
             ) : (
@@ -769,6 +965,15 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
             <div>No IMEI available for this user</div>
           )}
         </div>
+      )}
+      {mode === "detail" && detailModelLoaded && !panelVisible && (
+        <button
+          onClick={() => setPanelVisible(true)}
+          title="Show panel"
+          style={{ position: "fixed", right: 0, top: "50%", transform: "translateY(-50%)", zIndex: 1000, background: "rgba(1, 7, 22, 0.9)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", borderRight: "none", borderRadius: "6px 0 0 6px", padding: "10px 12px", cursor: "pointer" }}
+        >
+          ←
+        </button>
       )}
     </div>
   );
@@ -801,14 +1006,110 @@ function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { pos
   }, [controlsRef, camera, initial]);
   return null;
 }
+function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed, onModelLoaded, showInlineChart = false, chartDeviceMap, chartDeviceTypes, chartDataTypes = [], chartMaxPoints = 10, chartHistoryRef }: { controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean; onModelLoaded?: () => void; showInlineChart?: boolean; chartDeviceMap?: any; chartDeviceTypes?: string[]; chartDataTypes?: string[]; chartMaxPoints?: number; chartHistoryRef?: React.MutableRefObject<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>> }) {
+  const { camera } = useThree();
+  const gltf: any = useGLTF(glbName);
+  const groupRef = useRef<THREE.Group>(null);
+  const [glows, setGlows] = useState<{ name: string; center: [number, number, number]; radius: number }[]>([]);
 
-function FurnitureDetail({ controlsRef, onMeshSelected, selectedMeshName }: { controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshName?: string | null }) {
+  useEffect(() => {
+    if (!gltf?.scene) return;
+    const box = new THREE.Box3().setFromObject(gltf.scene);
+    const sphere = new THREE.Sphere();
+    box.getBoundingSphere(sphere);
+    const center = sphere.center;
+    controlsRef.current?.target.copy(center);
+    controlsRef.current?.update();
+
+    camera.position.set(center.x, center.y + sphere.radius * 0.6, center.z + sphere.radius * 2.2);
+    camera.near = Math.max(0.1, sphere.radius / 100);
+    camera.far = Math.max(1000, sphere.radius * 100);
+    camera.updateProjectionMatrix();
+    onModelLoaded?.();
+  }, [gltf, controlsRef, camera]);
+
+  useEffect(() => {
+    const res: { name: string; center: [number, number, number]; radius: number }[] = [];
+    if (!gltf?.scene) { setGlows([]); return; }
+    selectedMeshNames.forEach((n) => {
+      const obj = gltf.scene.getObjectByName?.(n);
+      if (!obj) return;
+      const box = new THREE.Box3().setFromObject(obj);
+      const sphere = new THREE.Sphere();
+      box.getBoundingSphere(sphere);
+      const worldCenter = sphere.center.clone();
+      const localCenter = worldCenter.clone();
+      if (groupRef.current) {
+        groupRef.current.worldToLocal(localCenter);
+      }
+      res.push({ name: n, center: [localCenter.x, localCenter.y, localCenter.z], radius: sphere.radius });
+    });
+    setGlows(res);
+  }, [selectedMeshNames, gltf]);
+
+  return (
+    <group ref={groupRef}>
+      {gltf?.scene && (
+      <primitive
+        object={gltf.scene}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          const obj = e.object as THREE.Object3D;
+          const meshName = (obj as any)?.name || "Unnamed";
+          if (isMeshAllowed && !isMeshAllowed(meshName)) {
+            return;
+          }
+          onMeshSelected?.(meshName);
+        }}
+      />)}
+      {glows.map((g) => (
+        <GlowShell key={g.name} center={g.center} radius={g.radius} />
+      ))}
+      {glows.length > 0 && showInlineChart && chartDeviceMap && chartDeviceTypes && chartDeviceTypes.length > 0 && (
+        glows.map((g, i) => {
+          const spacing = Math.max(24, Math.max(...glows.map((x) => x.radius)) * 1.4);
+          const mid = (glows.length - 1) / 2;
+          const offsetX = (i - mid) * spacing;
+          const pos = [g.center[0] + offsetX, g.center[1] + g.radius * 0.9, g.center[2]] as [number, number, number];
+          const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+          const meshNorm = norm(g.name);
+          const dt = chartDeviceTypes.find((d) => {
+            const dn = norm(d);
+            return dn.includes(meshNorm) || meshNorm.includes(dn);
+          }) || chartDeviceTypes[0];
+          return (
+            <Html key={`chart-${g.name}`} center position={pos} style={{ pointerEvents: "auto" }}>
+              <div style={{ transform: "scale(0.6)", transformOrigin: "top center" }}>
+                <div style={{ width: 600, maxWidth: 640, background: "rgba(0,0,0,0.8)", color: "#fff", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 12, padding: 12, boxShadow: "0 12px 30px rgba(0,0,0,0.55)" }}>
+                  <div style={{ marginBottom: 10 }}>
+                    <LatestDashboard deviceMap={chartDeviceMap} device={[dt]} dataType={chartDataTypes} compact />
+                  </div>
+                  <LatestLineChart
+                    deviceMap={chartDeviceMap}
+                    deviceType={dt}
+                    dataType={chartDataTypes}
+                    maxPoints={chartMaxPoints}
+                    title="Realtime Line Chart"
+                    height={260}
+                    historyRef={chartHistoryRef}
+                  />
+                </div>
+              </div>
+            </Html>
+          );
+        })
+      )}
+    </group>
+  );
+}
+function FurnitureDetail({ controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed }: { controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean }) {
   const { camera } = useThree();
   const gltf: any = useGLTF("/3dmodel/Furniture.glb");
   const groupRef = useRef<THREE.Group>(null);
-  const [glow, setGlow] = useState<{ center: [number, number, number]; radius: number } | null>(null);
+  const [glows, setGlows] = useState<{ name: string; center: [number, number, number]; radius: number }[]>([]);
 
   useEffect(() => {
+    if (!gltf?.scene) return;
     const box = new THREE.Box3().setFromObject(gltf.scene);
     const sphere = new THREE.Sphere();
     box.getBoundingSphere(sphere);
@@ -822,29 +1123,43 @@ function FurnitureDetail({ controlsRef, onMeshSelected, selectedMeshName }: { co
     camera.updateProjectionMatrix();
   }, [gltf, controlsRef, camera]);
 
+  useEffect(() => {
+    const res: { name: string; center: [number, number, number]; radius: number }[] = [];
+    if (!gltf?.scene) { setGlows([]); return; }
+    selectedMeshNames.forEach((n) => {
+      const obj = gltf.scene.getObjectByName?.(n);
+      if (!obj) return;
+      const box = new THREE.Box3().setFromObject(obj);
+      const sphere = new THREE.Sphere();
+      box.getBoundingSphere(sphere);
+      const worldCenter = sphere.center.clone();
+      const localCenter = worldCenter.clone();
+      if (groupRef.current) {
+        groupRef.current.worldToLocal(localCenter);
+      }
+      res.push({ name: n, center: [localCenter.x, localCenter.y, localCenter.z], radius: sphere.radius });
+    });
+    setGlows(res);
+  }, [selectedMeshNames, gltf]);
+
   return (
     <group ref={groupRef}>
+      {gltf?.scene && (
       <primitive
         object={gltf.scene}
         onPointerDown={(e) => {
           e.stopPropagation();
           const obj = e.object as THREE.Object3D;
           const meshName = (obj as any)?.name || "Unnamed";
-          onMeshSelected?.(meshName);
-          // Compute world bounding sphere of selected object
-          const box = new THREE.Box3().setFromObject(obj);
-          const sphere = new THREE.Sphere();
-          box.getBoundingSphere(sphere);
-          const worldCenter = sphere.center.clone();
-          // Convert to local position relative to FurnitureDetail group
-          const localCenter = worldCenter.clone();
-          if (groupRef.current) {
-            groupRef.current.worldToLocal(localCenter);
+          if (isMeshAllowed && !isMeshAllowed(meshName)) {
+            return;
           }
-          setGlow({ center: [localCenter.x, localCenter.y, localCenter.z], radius: sphere.radius });
+          onMeshSelected?.(meshName);
         }}
-      />
-      {glow && <GlowShell center={glow.center} radius={glow.radius} />}
+      />)}
+      {glows.map((g) => (
+        <GlowShell key={g.name} center={g.center} radius={g.radius} />
+      ))}
     </group>
   );
 }
@@ -1004,9 +1319,7 @@ function GridBackground({ options }: { options: GridOptions }) {
 }
 
 function CanvasDecor({ mode, currentRegion }: { mode: "map" | "region" | "detail"; currentRegion: string }) {
-  const { active } = useProgress();
   const isDetail = mode === "detail";
-  const loadingGLB = isDetail && active;
   return (
     <>
       <SceneBackground color={isDetail ? "rgb(197, 197, 197)" : "rgb(1, 7, 22)"} />

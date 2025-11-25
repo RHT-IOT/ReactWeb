@@ -481,19 +481,8 @@ function LoginApp() {
 
   return (
     <>
-      {/* Fixed left navigation bar */}
-      <nav className="side-nav">
-        <div className="nav-title">Navigation</div>
-        <button className={`brand-button ${activeTab === 'latest' ? '' : 'button-secondary'}`} onClick={() => setActiveTab('latest')}>Latest Datapoint</button>
-        <button className={`brand-button ${activeTab === 'history' ? '' : 'button-secondary'}`} onClick={() => setActiveTab('history')}>History Data</button>
-        <a className="brand-button" href="/3d">3D Mode</a>
-        <a className="brand-button" href="/controlPanel">Control Panel</a>
-      </nav>
-
-      <div className="content-shell">
-        <div className="page-container">
-      {/* Theme header with logo and switcher */}
-      <div className="brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
+      {/* Fixed top navigation with brand header */}
+      <header className="top-nav brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <img src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
           <span className="brand-title">{brandTitle}</span>
@@ -506,7 +495,19 @@ function LoginApp() {
           <button className="brand-button button-outline" onClick={() => signOutRedirect()}>Sign out</button>            
           { auth.user?.profile.email === "natsense00@gmail.com" ? <button className="brand-button button-outline" onClick={() => window.location.replace('/admin')}>admin</button> :<></>}           
         </div>
-      </div>
+      </header>
+      {/* Fixed left navigation bar */}
+      <nav className="side-nav">
+        
+        <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}> <img src="dashboard.png" alt="Latest" style={{ height: '36px' }}/>Latest Data</button>
+        <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}><img src="chart.png" alt="Latest" style={{ height: '36px' }}/>History Data</button>
+        <a className="brand-button" href="/3d"><img src="3d.png" alt="Latest" style={{ height: '36px' }}/>3D Mode</a>
+        <a className="brand-button" href="/controlPanel"><img src="ControlPanel.png" alt="Latest" style={{ height: '36px' }}/>Control Panel</a>
+      </nav>
+
+      <div className="content-shell">
+        <div className="page-container">
+      {/* (brand header moved to fixed top navigation) */}
       {/* Friendly hint */}
       <div className="panel" style={{ marginTop: 12 }}>
         <div className="section-title">Welcome, {userInfo.username || 'User'}</div>
@@ -635,22 +636,6 @@ function LoginApp() {
                 </div>
               </div>
             </>
-          )}
-
-          {activeTab === '3d' && (
-            <div className="panel">
-              <div className="section-title">3D Mode</div>
-              <p>Open the interactive 3D model for your devices.</p>
-              <a className="brand-button button-secondary" href="/3d" style={{ marginTop: 8 }}>View 3D Model</a>
-            </div>
-          )}
-
-          {activeTab === 'control' && (
-            <div className="panel">
-              <div className="section-title">Control Panel</div>
-              <p>Send control commands to your selected devices.</p>
-              <a className="brand-button button-secondary" href="/controlPanel" style={{ marginTop: 8 }}>Go to Control Panel</a>
-            </div>
           )}
       </div>
       </div>

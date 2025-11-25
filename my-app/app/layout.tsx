@@ -1,14 +1,19 @@
+"use client";
 import OidcProvider from "./OidcProvider";
 import "./globals.css";
 import "./themes/theme-a.css";
 import "./themes/theme-b.css";
 import "./themes/theme-c.css";
+import { usePathname } from "next/navigation";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const hideFooter = pathname?.startsWith("/3d");
   return (
     <html lang="en">
       <body className="theme-a mode-light">
         <OidcProvider>{children}</OidcProvider>
+        {!hideFooter && (
         <footer className="footer">
           {/* Theme A footer (RHT) */}
           <div className="footer-inner footer-a footer-variant">
@@ -98,6 +103,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="footer-contact">© 2024 Natsense. All rights reserved.</div>
           </div>
         </footer>
+        )}
       </body>
     </html>
   );

@@ -50,8 +50,8 @@ export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2
 
   return (
     <div className="panel" style={{ padding: compact ? 10 : 12 }}>
-      {/* Title above gauge (kept as original) */}
-      <div style={{ fontWeight: 700, marginBottom: 8, textAlign: 'center' }}>{title}</div>
+      {/* Title above gauge */}
+      <div style={{ fontWeight: 800, marginBottom: 8, textAlign: 'center', fontSize: compact ? 18 : 22 }}>{title}</div>
       
       {/* Gauge container */}
       <div 
@@ -85,9 +85,8 @@ export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2
           {/* Main value + unit (single line, same format as before) */}
           <div style={{
             fontSize: `${fontSize}px`,
-            fontWeight: 700,
+            fontWeight: 800,
             color: '#111',
-            // Kept your original marginTop to match existing positioning
             marginTop: 30,
             display: 'block',
           }}>
