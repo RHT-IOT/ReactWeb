@@ -12,6 +12,7 @@ import { getIMEIList, createLatestDpPoller, DeviceInfo } from "../lib/aws";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { point as turfPoint } from "@turf/helpers";
 
+import Image from 'next/image';
 const projection = d3.geoMercator().scale(400).translate([0, 0]);
 
 function coordsToShape(coords) {
@@ -829,7 +830,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           <button className="brand-button" onClick={backMainMap}>Back to main map</button>
         </div>
         <div style={{ position: "absolute", top: 70, left: 16, zIndex: 1, padding: "8px 12px", borderRadius: 8, backgroundColor: "rgba(0, 0, 0, 0)" }}>
-        <a href="/login"><img src="2d.png" alt="Latest" style={{ height: '36px' }}/></a>
+        <a href="/login"><Image src="2d.png" alt="Latest" style={{ height: '36px' }}/></a>
         </div>
         <Canvas
           camera={{ position: [33.4, -202.9, 447.9], fov: 45 }}

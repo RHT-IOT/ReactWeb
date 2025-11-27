@@ -10,6 +10,7 @@ import 'chartjs-adapter-date-fns';
 import DateTimeRangePickerValue from "../datepicker";
 import dayjs from "dayjs";
 
+import Image from 'next/image';
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, TimeSeriesScale, ArcElement);
 
 // Center text plugin is provided by shared DashboardGauges; local plugin removed.
@@ -505,7 +506,7 @@ function LoginApp() {
       {/* Fixed top navigation with brand header */}
       <header className="top-nav brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+          <Image src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
           <span className="brand-title">{brandTitle}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -520,10 +521,10 @@ function LoginApp() {
       {/* Fixed left navigation bar */}
       <nav className="side-nav">
         
-        <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}> <img src="dashboard.png" alt="Latest" style={{ height: '36px' }}/>Latest Data</button>
-        <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}><img src="chart.png" alt="Latest" style={{ height: '36px' }}/>History Data</button>
-        <a className="brand-button" href="/3d"><img src="3d.png" alt="Latest" style={{ height: '36px' }}/>3D Mode</a>
-        <a className="brand-button" href="/controlPanel"><img src="ControlPanel.png" alt="Latest" style={{ height: '36px' }}/>Control Panel</a>
+        <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}> <Image src="dashboard.png" alt="Latest" style={{ height: '36px' }}/>Latest Data</button>
+        <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}><Image src="chart.png" alt="Latest" style={{ height: '36px' }}/>History Data</button>
+        <a className="brand-button" href="/3d"><Image src="3d.png" alt="Latest" style={{ height: '36px' }}/>3D Mode</a>
+        <a className="brand-button" href="/controlPanel"><Image src="ControlPanel.png" alt="Latest" style={{ height: '36px' }}/>Control Panel</a>
       </nav>
 
       <div className="content-shell">

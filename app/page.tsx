@@ -1,5 +1,6 @@
 // App.js
 "use client";
+import Image from 'next/image';
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "react-oidc-context";
 
@@ -69,7 +70,7 @@ function App() {
     <div className="page-container" style={{ paddingTop: 24 }}>
       <div className="brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+          <Image src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
           <span className="brand-title">{brandTitle}</span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -88,8 +89,8 @@ function App() {
       <section className="hero">
         <h1 className="hero-title">{brandTitle}</h1>
         <div className="hero-actions"> 
-        <img src={'/companyPhoto/RHT2.avif'} alt="Company Logo" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
-        <img src={'/companyPhoto/RHT1.avif'} alt="Company Logo" style={{ height: '400px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+        <Image src={'/companyPhoto/RHT2.avif'} alt="Company Logo" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+        <Image src={'/companyPhoto/RHT1.avif'} alt="Company Logo" style={{ height: '400px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
         </div>
         <p className="hero-subtitle">Sign in to view dashboards, filter data, and export CSV.</p>
         <div className="hero-actions"> 
