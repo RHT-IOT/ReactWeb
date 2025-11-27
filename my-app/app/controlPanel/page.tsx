@@ -82,8 +82,23 @@ export default function AdminPage() {
 
   async function fetchCPNames(imei: string) {
     if (!imei || !auth?.user?.id_token) return;
+    async function authFetchRetry(url: string, init: RequestInit) {
+      let res = await fetch(url, init);
+      if (res.status === 401 || res.status === 403) {
+        try {
+          const fn: any = (auth as any)?.signinSilent;
+          if (typeof fn === 'function') {
+            const user = await fn();
+            const tk = (user as any)?.id_token ?? auth.user.id_token;
+            const nextInit = { ...init, headers: { ...(init.headers || {}), Authorization: `Bearer ${tk}` } };
+            res = await fetch(url, nextInit);
+          }
+        } catch {}
+      }
+      return res;
+    }
     try {
-      const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getCPname", {
+      const res = await authFetchRetry("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getCPname", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -129,7 +144,7 @@ export default function AdminPage() {
       return [key, value];
     });
     try {
-      const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/setCPvalue", {
+      const res = await authFetchRetry("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/setCPvalue", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

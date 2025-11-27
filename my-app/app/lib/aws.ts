@@ -14,15 +14,34 @@ export type DeviceInfo = {
 
 export type IMEIListResult = { items: DeviceInfo[]; dev_access: string[][] };
 
-export async function getIMEIList(email: string, idToken: string): Promise<IMEIListResult> {
-  const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getIMEI", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${idToken}`,
-    },
-    body: JSON.stringify({ email }),
-  });
+async function fetchWithAuthRetry(url: string, initBody: any, idToken: string, getIdToken?: () => Promise<string>, method: string = "POST") {
+  const make = async (tk: string) =>
+    fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tk}` },
+      body: JSON.stringify(initBody),
+    });
+  let res = await make(idToken);
+  if ((res.status === 401 || res.status === 403) && getIdToken) {
+    try {
+      const newTk = await getIdToken();
+      if (newTk) res = await make(newTk);
+    } catch (e) {
+      // swallow and fall through
+    }
+  }
+  if (!res.ok) {
+    const err: any = new Error(`HTTP ${res.status}`);
+    err.status = res.status;
+    err.url = url;
+    try { err.body = await res.text(); } catch {}
+    throw err;
+  }
+  return res;
+}
+
+export async function getIMEIList(email: string, idToken: string, getIdToken?: () => Promise<string>): Promise<IMEIListResult> {
+  const res = await fetchWithAuthRetry("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getIMEI", { email }, idToken, getIdToken);
   const data = await res.json();
   let body: any = {};
   try {
@@ -37,15 +56,8 @@ export async function getIMEIList(email: string, idToken: string): Promise<IMEIL
   return { items, dev_access };
 }
 
-export async function getLatestDP(IMEI: string, idToken: string): Promise<LatestDPResult> {
-  const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getLatestDP", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${idToken}`,
-    },
-    body: JSON.stringify({ IMEI }),
-  });
+export async function getLatestDP(IMEI: string, idToken: string, getIdToken?: () => Promise<string>): Promise<LatestDPResult> {
+  const res = await fetchWithAuthRetry("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getLatestDP", { IMEI }, idToken, getIdToken);
   const data = await res.json();
   const temp = JSON.parse(data.body ?? "[]");
   const map: Record<string, any> = {};
@@ -64,16 +76,10 @@ export async function getDPFromTime(
   startDateTime: string,
   endDateTime: string,
   idToken: string,
-  timeInterval: string
+  timeInterval: string,
+  getIdToken?: () => Promise<string>
 ): Promise<{ deviceTypes: string[]; items: any[] }> {
-  const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getDpFromTime", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${idToken}`,
-    },
-    body: JSON.stringify({ IMEI, startDateTime, endDateTime, timeInterval}),
-  });
+  const res = await fetchWithAuthRetry("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getDpFromTime", { IMEI, startDateTime, endDateTime, timeInterval }, idToken, getIdToken);
   const data = await res.json();
   const temp = JSON.parse(data.body ?? "{}");
   return { deviceTypes: temp.deviceTypes || [], items: temp.items || [] };
@@ -82,19 +88,41 @@ export async function getDPFromTime(
 export function createLatestDpPoller({
   IMEI,
   idToken,
+  getIdToken,
   intervalMs = 5 * 60 * 1000,
   callback,
 }: {
   IMEI: string;
   idToken: string;
+  getIdToken?: () => Promise<string>;
   intervalMs?: number;
   callback: (result: LatestDPResult) => void;
 }) {
   let timer: number | null = null;
+  let currentToken = idToken;
 
   async function tick() {
     try {
-      const result = await getLatestDP(IMEI, idToken);
+      let result: LatestDPResult;
+      try {
+        result = await getLatestDP(IMEI, currentToken);
+      } catch (e: any) {
+        if ((e?.status === 401 || e?.status === 403) && getIdToken) {
+          try {
+            const newTk = await getIdToken();
+            if (newTk) {
+              currentToken = newTk;
+              result = await getLatestDP(IMEI, currentToken);
+            } else {
+              throw e;
+            }
+          } catch (inner) {
+            throw inner ?? e;
+          }
+        } else {
+          throw e;
+        }
+      }
       callback(result);
     } catch (e) {
       console.error("Poller tick failed:", e);

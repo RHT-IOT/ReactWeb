@@ -293,7 +293,18 @@ function LoginApp() {
     const callApi = async (email) => {
       if(auth.isAuthenticated && email){
         try {
-          const list = await getIMEIList(email, auth.user?.id_token as string);
+          const getIdToken = async () => {
+            try {
+              const fn: any = (auth as any)?.signinSilent;
+              if (typeof fn === 'function') {
+                const user = await fn();
+                const tk = (user as any)?.id_token;
+                if (tk) return tk;
+              }
+            } catch {}
+            return auth.user?.id_token as string;
+          };
+          const list = await getIMEIList(email, auth.user?.id_token as string, getIdToken);
           const items = Array.isArray(list.items) ? list.items : [];
           setIMEI_ARR(items);
           const access = Array.isArray(list.dev_access) ? list.dev_access : [];
@@ -349,7 +360,18 @@ function LoginApp() {
   const getLatestDp = async () => {
     if (!IMEIs || IMEIs.length === 0 || !auth.user?.id_token) return;
     try {
-      const results = await Promise.all(IMEIs.map(imei => getLatestDP(imei, auth.user!.id_token as string)));
+      const getIdToken = async () => {
+        try {
+          const fn: any = (auth as any)?.signinSilent;
+          if (typeof fn === 'function') {
+            const user = await fn();
+            const tk = (user as any)?.id_token;
+            if (tk) return tk;
+          }
+        } catch {}
+        return auth.user!.id_token as string;
+      };
+      const results = await Promise.all(IMEIs.map(imei => getLatestDP(imei, auth.user!.id_token as string, getIdToken)));
       const combinedMap: Record<string, any> = {};
       const devTypes = new Set<string>();
       results.forEach(res => {

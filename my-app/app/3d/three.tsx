@@ -496,6 +496,18 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const [visibleDevices, setVisibleDevices] = useState<DeviceInfo[]>([]);
   const pollerRef = useRef<any>(null);
   const chartHistoryRef = useRef<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>>({});
+  const getIdTokenAsync = useCallback(async () => {
+    try {
+      const fn: any = (auth as any)?.signinSilent;
+      if (typeof fn === 'function') {
+        const user = await fn();
+        const tk = (user as any)?.id_token;
+        if (tk) return tk;
+      }
+    } catch {}
+    return auth?.user?.id_token || "";
+  }, [auth?.user?.id_token]);
+  
   const [allowedByDeviceId, setAllowedByDeviceId] = useState<Record<string, string[]>>({});
   const [allowedDeviceTypes3D, setAllowedDeviceTypes3D] = useState<string[]>([]);
   const [selectedDeviceTypes3D, setSelectedDeviceTypes3D] = useState<string[]>([]);
@@ -547,10 +559,12 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   useEffect(() => {
     setSelectedDataTypes3D(prev => {
       const allowedSet = new Set(availableDataTypes3D);
+      const hadSelection = prev.length > 0;
       const intersection = prev.filter(d => allowedSet.has(d));
-      const next = intersection.length > 0 ? intersection : availableDataTypes3D;
-      const sameContent = prev.length === next.length && prev.every(v => next.includes(v));
-      return sameContent ? prev : next;
+      if (!hadSelection) return availableDataTypes3D;
+      if (intersection.length === 0) return prev;
+      if (intersection.length === prev.length) return prev;
+      return intersection;
     });
   }, [availableDataTypes3D]);
 
@@ -649,7 +663,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   // Fetch IMEI list and set default IMEI
   useEffect(() => {
     if (!auth.isAuthenticated || !auth.user?.id_token || !auth.user?.profile?.email) return;
-    getIMEIList(auth.user.profile.email, auth.user?.id_token)
+    getIMEIList(auth.user.profile.email, auth.user?.id_token, getIdTokenAsync)
       .then(list => {
         const items = Array.isArray(list.items) ? list.items : [];
         const devAccess = Array.isArray(list.dev_access) ? list.dev_access : [];
@@ -666,7 +680,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
         setAllowedDeviceTypes3D(map[firstIMEI] || []);
       })
       .catch(err => console.error("3D getIMEIList error:", err));
-  }, [auth.isAuthenticated, auth.user?.id_token, auth.user?.profile?.email]);
+  }, [auth.isAuthenticated, auth.user?.id_token, auth.user?.profile?.email, getIdTokenAsync]);
 
   // Start latest DP poller when IMEI available
   useEffect(() => {
@@ -678,6 +692,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     const poller = createLatestDpPoller({
       IMEI,
       idToken: auth.user.id_token,
+      getIdToken: getIdTokenAsync,
       intervalMs: updateIntervalMs,
       callback: (result) => {
         setDeviceMap(result.deviceMap);
