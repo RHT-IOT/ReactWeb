@@ -14,7 +14,8 @@ export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2
   // Resize handling to keep chart centered
   useEffect(() => {
     const handleResize = () => {
-      containerRef.current?.querySelector('canvas')?.parentElement?.forceUpdate?.();
+      const parent = containerRef.current?.querySelector('canvas')?.parentElement as any;
+      parent?.forceUpdate?.();
     };
 
     window.addEventListener('resize', handleResize);

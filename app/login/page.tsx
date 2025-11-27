@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "react-oidc-context";
 import Form from 'react-bootstrap/Form';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, ArcElement } from 'chart.js';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, TimeSeriesScale, ArcElement, ChartOptions } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { LatestDashboard } from "../components/DashboardGauges";
 import { getIMEIList, getLatestDP, getDPFromTime } from "../lib/aws";
@@ -10,21 +10,20 @@ import 'chartjs-adapter-date-fns';
 import DateTimeRangePickerValue from "../datepicker";
 import dayjs from "dayjs";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, ArcElement);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, TimeSeriesScale, ArcElement);
 
 // Center text plugin is provided by shared DashboardGauges; local plugin removed.
 
 function SelectIMEIMulti({ IMEI, setValues, setcurrdev, setdevarr }) {
-  const handleMultiSelect = (e) => {
-    const selected = Array.from(e.target.selectedOptions).map(opt => opt.value);
+  const handleMultiSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
     setValues(selected);
     setcurrdev([]);
     setdevarr([]);
   };
   const entries = Array.isArray(IMEI) ? IMEI : [];
-  const size = Math.min(entries.length || 6, 8);
   return (
-    <Form.Select multiple size={size} className="brand-select" aria-label="Select IMEIs" onChange={handleMultiSelect}>
+    <Form.Select multiple className="brand-select" aria-label="Select IMEIs" onChange={handleMultiSelect}>
       {entries.map((opt, index) => {
         const label = typeof opt === 'string' ? opt : (opt?.Location ?? String(opt?.DeviceID ?? ''));
         const value = typeof opt === 'string' ? opt : String(opt?.DeviceID ?? '');
@@ -42,8 +41,8 @@ function DropboxDev({ devicearr, setcurrdev, allowed }: { devicearr: any; setcur
   if(!devicearr){
     return (<p>click refresh</p>);
   }
-  const handleMultiSelect=(e)=>{
-    const selectedKeys = Array.from(e.target.selectedOptions).map(opt => opt.value);
+  const handleMultiSelect=(e: React.ChangeEvent<HTMLSelectElement>)=>{
+    const selectedKeys = Array.from(e.target.selectedOptions).map((opt) => opt.value);
     const values = selectedKeys.map(key => Array.isArray(devicearr) ? devicearr[key] : devicearr[key]);
     setcurrdev(values);
   };
@@ -53,7 +52,7 @@ function DropboxDev({ devicearr, setcurrdev, allowed }: { devicearr: any; setcur
     : Object.entries(devicearr);
   const filteredEntries = entries.filter(([key, value]) => allowedSet.size === 0 ? true : allowedSet.has(String(value)));
   return (
-    <Form.Select multiple size={Math.min(filteredEntries.length, 6)} className="brand-select" aria-label="Select devices" onChange={handleMultiSelect}>
+    <Form.Select multiple className="brand-select" aria-label="Select devices" onChange={handleMultiSelect}>
       {filteredEntries.map(([key, value]) => (
         <option key={key} value={key}>
           {value}
@@ -63,7 +62,7 @@ function DropboxDev({ devicearr, setcurrdev, allowed }: { devicearr: any; setcur
   );
 }
 function DropboxTime({setValue}) {
-  const handleSelect=(e)=>{
+  const handleSelect=(e: React.ChangeEvent<HTMLSelectElement>)=>{
     if(e.target.value){
       setValue(e.target.value)
     }
@@ -80,28 +79,28 @@ function DropboxTime({setValue}) {
   );
 }
 
-function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }) {
+function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }: { timeSeriesData: any[]; device: string[]; dataType: string[]; setDataType: (v: string[]) => void }) {
   if (!timeSeriesData || timeSeriesData.length === 0 || !device || device.length === 0) {
     return <p>Select device(s) first</p>;
   }
 
   const meta = new Set(["DeviceID", "DeviceType", "Timestamp"]);
   const deviceItems = timeSeriesData.filter(i => device.includes(i.DeviceType));
-  const dataFields = Array.from(new Set(
-    deviceItems.flatMap(i => Object.keys(i).filter(k => !meta.has(k) && typeof i[k] === 'number'))
-  ));
+  const dataFields: string[] = Array.from(new Set(
+    deviceItems.flatMap(i => Object.keys(i).filter(k => !meta.has(k) && typeof (i as Record<string, any>)[k] === 'number'))
+  )) as string[];
 
   if (dataFields.length === 0) {
     return <p>No numeric data available</p>;
   }
 
-  const handleMultiSelect = (e) => {
-    const selected = Array.from(e.target.selectedOptions).map(opt => opt.value);
+  const handleMultiSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
     setDataType(selected);
   };
 
   return (
-    <Form.Select multiple size={Math.min(dataFields.length, 6)} className="brand-select" aria-label="Select data types" value={dataType} onChange={handleMultiSelect}>
+    <Form.Select multiple className="brand-select" aria-label="Select data types" value={dataType} onChange={handleMultiSelect}>
       {dataFields.map(field => (
         <option key={field} value={field}>
           {field}
@@ -113,21 +112,20 @@ function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }) {
 
 // Using shared gauges now; removed inline GaugeCard and LatestDashboard.
 
-const ExportCSVButton = ({ data, filename = "export.csv" }) => {
-  const convertToCSV = (arr) => {
+const ExportCSVButton = ({ data, filename = "export.csv" }: { data: Array<Record<string, any>>; filename?: string }) => {
+  const convertToCSV = (arr: Array<Record<string, any>>) => {
     if (!arr || arr.length === 0) return "";
     // Define the order you want
     const fixedOrder = ["DeviceID", "Timestamp", "DeviceType"];
 
     // Collect all other keys dynamically (excluding the fixed ones)
-    const otherKeys = Array.from(
-      arr.reduce((set, obj) => {
-        Object.keys(obj).forEach((k) => {
-          if (!fixedOrder.includes(k)) set.add(k);
-        });
-        return set;
-      }, new Set())
-    );
+    const otherKeysSet = new Set<string>();
+    for (const obj of arr) {
+      for (const k of Object.keys(obj)) {
+        if (!fixedOrder.includes(k)) otherKeysSet.add(k);
+      }
+    }
+    const otherKeys = Array.from(otherKeysSet);
 
     // Final header order
     const keys = [...fixedOrder, ...otherKeys];
@@ -137,7 +135,7 @@ const ExportCSVButton = ({ data, filename = "export.csv" }) => {
 
     // Data rows
     const rows = arr
-      .map((obj) =>
+      .map((obj: Record<string, any>) =>
         keys
           .map((k) => {
             let val = obj[k] ?? "";
@@ -180,7 +178,7 @@ function LoginApp() {
   const [IMEIs, setIMEIs] = useState<string[]>([]);
   const [deviceMap, setDeviceMap]=useState('');
   const [timeInterval, setTimeInterval]=useState('');
-  const [deviceType, setDeviceType]=useState('');
+  const [deviceType, setDeviceType]=useState<string[]>([]);
   const [device, setDevice]=useState<string[]>([]);
   const [startDateTime, setStartDateTime]=useState('');
   const [endDateTime, setEndDateTime]=useState('');
@@ -200,7 +198,7 @@ function LoginApp() {
   // Dynamic brand title per theme
   const brandTitle = theme === 'theme-a' ? 'RHT Limited' : theme === 'theme-b' ? 'CMA testing' : 'Natsense';
 
-  const options = {
+  const options: ChartOptions<'line'> = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -214,7 +212,7 @@ function LoginApp() {
     },
     scales: {
       x: {
-        type: 'time',
+        type: 'timeseries',
         time: {
           unit: 'minute'
         },
@@ -225,6 +223,7 @@ function LoginApp() {
         
       },
       y: {
+        type: 'linear',
         title: {
           display: true,
           text: Array.isArray(dataType) && dataType.length === 1 ? dataType[0] : 'Value'

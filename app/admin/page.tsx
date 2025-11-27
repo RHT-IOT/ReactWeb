@@ -3,7 +3,8 @@
 import { useAuth } from "react-oidc-context";
 import { useEffect, useState,useId } from "react";
 
-BigInt.prototype.toJSON = function() {
+// Cast to any to extend BigInt prototype for JSON serialization
+(BigInt.prototype as any).toJSON = function() {
   return this.toString();
 };
 function AccessManager({ data, onSave }) {

@@ -103,9 +103,9 @@ function Region({ feature, onClick, isSelected, onSelectName, hoverScaleZ = 3 }:
         </mesh>
       ))}
       {borders.map((borderGeom, idx) => (
-        <line key={`border-${idx}`} geometry={borderGeom} raycast={null}>
+        <lineSegments key={`border-${idx}`} geometry={borderGeom}>
           <lineBasicMaterial color="white" />
-        </line>
+        </lineSegments>
       ))}
       {(hovered || isSelected) && (
         <Html
@@ -234,9 +234,19 @@ function GradientPillar({ height = 60, radius = 50, topColor = "#ff4040", bottom
   );
 }
 
-function Marker({ name, lngLat, onSelectName, onClearSelection, isSelected, radius = 3 }) {
+type LngLatTuple = [number, number];
+interface MarkerProps {
+  name: string;
+  lngLat: LngLatTuple;
+  onSelectName?: (name: string) => void;
+  onClearSelection?: () => void;
+  isSelected?: boolean;
+  radius?: number;
+}
+
+function Marker({ name, lngLat, onSelectName, onClearSelection, isSelected, radius = 3 }: MarkerProps) {
   const [hovered, setHovered] = useState(false);
-  const [x, y] = useMemo(() => projection(lngLat), [lngLat]);
+  const [x, y] = useMemo(() => (projection(lngLat) ?? [0, 0]) as [number, number], [lngLat]);
   const isLocal = useMemo(() => ["CMA", "HKSTP", "BOCDSS", "BOCYH"].includes(name), [name]);
   const pillarHeight = (name === "Hong Kong" || name === "Macau") ? 80 : 20;
   const baseRadius = radius && radius > 0 ? (name !== "Hong Kong" && name !== "Macau") ? 0.02: radius : (isLocal ? 1.0 : 1.2);
@@ -280,12 +290,18 @@ function Marker({ name, lngLat, onSelectName, onClearSelection, isSelected, radi
   );
 }
 
-function Markers({ onSelectName, onClearSelection, selectedName }) {
+interface MarkersProps {
+  onSelectName?: (name: string) => void;
+  onClearSelection?: () => void;
+  selectedName?: string;
+}
+
+function Markers({ onSelectName, onClearSelection, selectedName }: MarkersProps) {
   const [radius, setRadius] = useState(3);
   const points = useMemo(() => {
     return [
-      { name: "Hong Kong", lngLat: [114.1694, 22.3193] },
-      { name: "Macau", lngLat: [113.5439, 22.1987] }
+      { name: "Hong Kong", lngLat: [114.1694, 22.3193] as LngLatTuple },
+      { name: "Macau", lngLat: [113.5439, 22.1987] as LngLatTuple }
     ];
   }, [selectedName]);
 
@@ -822,7 +838,6 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
             gl.outputColorSpace = THREE.SRGBColorSpace;
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = 1.0;
-            gl.physicallyCorrectLights = true;
           }}
         >
           <CanvasDecor mode={mode} currentRegion={currentRegion} />
@@ -1021,14 +1036,14 @@ function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { pos
   }, [controlsRef, camera, initial]);
   return null;
 }
-function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed, onModelLoaded, showInlineChart = false, chartDeviceMap, chartDeviceTypes, chartDataTypes = [], chartMaxPoints = 10, chartHistoryRef }: { controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean; onModelLoaded?: () => void; showInlineChart?: boolean; chartDeviceMap?: any; chartDeviceTypes?: string[]; chartDataTypes?: string[]; chartMaxPoints?: number; chartHistoryRef?: React.MutableRefObject<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>> }) {
+function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed, onModelLoaded, showInlineChart = false, chartDeviceMap, chartDeviceTypes, chartDataTypes = [], chartMaxPoints = 10, chartHistoryRef }: { glbName?: string; controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean; onModelLoaded?: () => void; showInlineChart?: boolean; chartDeviceMap?: any; chartDeviceTypes?: string[]; chartDataTypes?: string[]; chartMaxPoints?: number; chartHistoryRef?: React.MutableRefObject<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>> }) {
   const { camera, size } = useThree();
   const gltf: any = useGLTF(glbName);
   const groupRef = useRef<THREE.Group>(null);
   const [glows, setGlows] = useState<{ name: string; center: [number, number, number]; radius: number }[]>([]);
   const chartPosRef = useRef<Record<string, [number, number, number]>>({});
   const [chartPosVersion, setChartPosVersion] = useState(0);
-  const dragRef = useRef<{ key: string; base: [number, number, number]; startX: number; startY: number } | null>(null);
+  const dragRef = useRef<{ key: string; base: [number, number, number]; startX: number; startY: number; pointerId?: number } | null>(null);
   
   useEffect(() => {
     if (!gltf?.scene) return;

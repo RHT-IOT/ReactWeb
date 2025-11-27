@@ -160,6 +160,23 @@ export default function AdminPage() {
     }
   }
 
+  async function authFetchRetry(url: string, init: RequestInit, retries = 2, delayMs = 1000): Promise<Response> {
+    let lastErr: any = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, init);
+        if (res.ok || attempt === retries) return res;
+        // If not OK, wait and retry
+      } catch (err) {
+        lastErr = err;
+        if (attempt === retries) throw err;
+      }
+      await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+    }
+    // Fallback throw if we somehow get here
+    throw lastErr ?? new Error("authFetchRetry failed");
+  }
+
   // Prefill inputs from latest DP for the selected device without overriding user-entered values
   useEffect(() => {
     if (!selectedDeviceType || !latestMap || dataTypes.length === 0) return;
