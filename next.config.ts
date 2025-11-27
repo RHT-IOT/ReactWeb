@@ -4,6 +4,9 @@ const nextConfig = {
   images: {
     unoptimized: true, // Disable default image optimization
   },
+   experimental: {
+    optimizeCss: false, // disable LightningCSS, fallback to PostCSS
+  },
   assetPrefix: isProd ? '/ReactWeb/' : '',
   basePath: isProd ? '/ReactWeb' : '',
   output: 'export'
