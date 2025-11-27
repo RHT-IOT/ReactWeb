@@ -1022,11 +1022,14 @@ function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { pos
   return null;
 }
 function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed, onModelLoaded, showInlineChart = false, chartDeviceMap, chartDeviceTypes, chartDataTypes = [], chartMaxPoints = 10, chartHistoryRef }: { controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean; onModelLoaded?: () => void; showInlineChart?: boolean; chartDeviceMap?: any; chartDeviceTypes?: string[]; chartDataTypes?: string[]; chartMaxPoints?: number; chartHistoryRef?: React.MutableRefObject<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>> }) {
-  const { camera,size } = useThree();
+  const { camera, size } = useThree();
   const gltf: any = useGLTF(glbName);
   const groupRef = useRef<THREE.Group>(null);
   const [glows, setGlows] = useState<{ name: string; center: [number, number, number]; radius: number }[]>([]);
-
+  const chartPosRef = useRef<Record<string, [number, number, number]>>({});
+  const [chartPosVersion, setChartPosVersion] = useState(0);
+  const dragRef = useRef<{ key: string; base: [number, number, number]; startX: number; startY: number } | null>(null);
+  
   useEffect(() => {
     if (!gltf?.scene) return;
     const box = new THREE.Box3().setFromObject(gltf.scene);
@@ -1121,6 +1124,13 @@ function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = []
           let dx = 0;
           let dy = 0;
           let posWorld = base;
+          const override = chartPosRef.current[dt];
+          if (override) {
+            const [sx, sy] = project(new THREE.Vector3(override[0], override[1], override[2]));
+            const box = { minX: sx - BOX_W / 2, minY: sy - BOX_H / 2, maxX: sx + BOX_W / 2, maxY: sy + BOX_H / 2 };
+            placed.push({ box, pos: [override[0], -override[1], override[2]], dt });
+            return;
+          }
           for (let t = 0; t < 50; t++) {
             posWorld = worldOffset(base, dx, dy);
             const [sx, sy] = project(posWorld);
@@ -1137,26 +1147,63 @@ function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = []
             placed.push({ box, pos: [posWorld.x, posWorld.y, posWorld.z], dt });
           }
         });
-        return placed.map((p, idx) => (
-          <Html key={`chart-${idx}`} center position={p.pos} style={{ pointerEvents: "none", userSelect: "none" }}>
-            <div style={{ transform: "scale(0.6)", transformOrigin: "top center" }}>
-              <div style={{ width: 450, maxWidth: 450, background: "rgba(0,0,0,0.8)", color: "#fff", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 12, padding: 6, boxShadow: "0 6px 16px rgba(0,0,0,0.4)" }}>
-                <div style={{ marginBottom: 6 }}>
-                  <LatestDashboard deviceMap={chartDeviceMap} device={[p.dt]} dataType={chartDataTypes} compact />
+        return placed.map((p, idx) => {
+          const base = new THREE.Vector3(p.pos[0], p.pos[1], p.pos[2]);
+          const handleWorld = worldOffset(base, -BOX_W / 2 - 14, -BOX_H / 2 - 14);
+          const onDown = (e: any) => {
+            e.stopPropagation();
+            if (e.button !== 0) return;
+            try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
+            dragRef.current = { key: p.dt, base: chartPosRef.current[p.dt] || p.pos, startX: e.clientX, startY: e.clientY, pointerId: e.pointerId } as any;
+          };
+          const onMove = (e: any) => {
+            if (!dragRef.current) return;
+            if (e.buttons !== 1) return;
+            if (dragRef.current.pointerId !== undefined && e.pointerId !== dragRef.current.pointerId) return;
+            e.stopPropagation();
+            const d = dragRef.current as any;
+            const dx2 = e.clientX - d.startX;
+            const dy2 = e.clientY - d.startY;
+            const next = worldOffset(new THREE.Vector3(d.base[0], d.base[1], d.base[2]), dx2, dy2);
+            chartPosRef.current[d.key] = [next.x, next.y, next.z];
+            setChartPosVersion(v => v + 1);
+          };
+          const onUp = (e: any) => {
+            e.stopPropagation();
+            try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+            dragRef.current = null;
+          };
+          const onLeave = (e: any) => {
+            if (!dragRef.current) return;
+            try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+            dragRef.current = null;
+          };
+          return (
+            <React.Fragment key={`frag-${idx}`}>
+              <Html center position={p.pos} style={{ pointerEvents: "none", userSelect: "none" }}>
+                <div style={{ transform: "scale(0.6)", transformOrigin: "top center" }}>
+                  <div style={{ width: 450, maxWidth: 450, background: "rgba(0,0,0,0.8)", color: "#fff", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 12, padding: 6, boxShadow: "0 6px 16px rgba(0,0,0,0.4)", fontSize: 14, lineHeight: 1.35 }}>
+                    <div style={{ marginBottom: 6 }}>
+                      <LatestDashboard deviceMap={chartDeviceMap} device={[p.dt]} dataType={chartDataTypes} compact />
+                    </div>
+                    <LatestLineChart
+                      deviceMap={chartDeviceMap}
+                      deviceType={p.dt}
+                      dataType={chartDataTypes}
+                      maxPoints={chartMaxPoints}
+                      title="Realtime Line Chart"
+                      height={120}
+                      historyRef={chartHistoryRef}
+                    />
+                  </div>
                 </div>
-                <LatestLineChart
-                  deviceMap={chartDeviceMap}
-                  deviceType={p.dt}
-                  dataType={chartDataTypes}
-                  maxPoints={chartMaxPoints}
-                  title="Realtime Line Chart"
-                  height={120}
-                  historyRef={chartHistoryRef}
-                />
-              </div>
-            </div>
-          </Html>
-        ));
+              </Html>
+              <Html center position={[handleWorld.x, handleWorld.y, handleWorld.z]} style={{ pointerEvents: "auto" }}>
+                <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onLeave} style={{ width: 16, height: 16, borderRadius: 8, background: "#66ccff", boxShadow: "0 0 8px rgba(102,204,255,0.8)", cursor: "grab" }} />
+              </Html>
+            </React.Fragment>
+          );
+        });
       })()}
     </group>
   );
