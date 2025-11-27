@@ -33,8 +33,6 @@ jobs:
       - name: Build Next.js
         run: npm run build
 
-      - name: Export static site
-        run: npm run export
         # Ensure "out" directory is created
 
       - name: Upload artifact
