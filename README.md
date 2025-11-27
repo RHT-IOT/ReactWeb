@@ -19,3 +19,4 @@ Table: controlIDTable (input)
 Get all the device id that need to be fetch from the sensor box model table and get the latestdp from bdzl
 Trigger: EventBridge
 Table: SensorBoxModel (input) | IAQSensorData (ouput)
+## Testing? why it still have readme.md in the gh branch??
