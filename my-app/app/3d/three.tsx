@@ -980,7 +980,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
 }
 
 function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { position: [number, number, number]; radius: number; alphaDeg: number; betaDeg: number } }) {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const did = useRef(false);
   useEffect(() => {
     if (did.current) return;
@@ -1007,7 +1007,7 @@ function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { pos
   return null;
 }
 function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed, onModelLoaded, showInlineChart = false, chartDeviceMap, chartDeviceTypes, chartDataTypes = [], chartMaxPoints = 10, chartHistoryRef }: { controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean; onModelLoaded?: () => void; showInlineChart?: boolean; chartDeviceMap?: any; chartDeviceTypes?: string[]; chartDataTypes?: string[]; chartMaxPoints?: number; chartHistoryRef?: React.MutableRefObject<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>> }) {
-  const { camera } = useThree();
+  const { camera,size } = useThree();
   const gltf: any = useGLTF(glbName);
   const groupRef = useRef<THREE.Group>(null);
   const [glows, setGlows] = useState<{ name: string; center: [number, number, number]; radius: number }[]>([]);
@@ -1065,105 +1065,87 @@ function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = []
       {glows.map((g) => (
         <GlowShell key={g.name} center={g.center} radius={g.radius} />
       ))}
-      {glows.length > 0 && showInlineChart && chartDeviceMap && chartDeviceTypes && chartDeviceTypes.length > 0 && (
-        glows.map((g, i) => {
-          const spacing = Math.max(24, Math.max(...glows.map((x) => x.radius)) * 1.4);
-          const mid = (glows.length - 1) / 2;
-          const offsetX = (i - mid) * spacing;
-          const pos = [g.center[0] + offsetX, g.center[1] + g.radius * 0.9, g.center[2]] as [number, number, number];
-          const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+      {glows.length > 0 && showInlineChart && chartDeviceMap && chartDeviceTypes && chartDeviceTypes.length > 0 && (() => {
+        const placed: { box: { minX: number; minY: number; maxX: number; maxY: number }; pos: [number, number, number]; dt: string }[] = [];
+        const BOX_W = 200;
+        const BOX_H = 140;
+        const stepX = 24;
+        const stepY = 18;
+        const project = (p: THREE.Vector3) => {
+          const v = p.clone().project(camera);
+          return [(v.x * 0.5 + 0.5) * size.width, (-v.y * 0.5 + 0.5) * size.height] as [number, number];
+        };
+        const worldOffset = (base: THREE.Vector3, dx: number, dy: number) => {
+          const f = new THREE.Vector3();
+          camera.getWorldDirection(f);
+          const u = camera.up.clone().normalize();
+          const r = new THREE.Vector3().crossVectors(f, u).normalize();
+          const p0 = project(base);
+          const pR = project(base.clone().add(r.clone().multiplyScalar(1)));
+          const pU = project(base.clone().add(u.clone().multiplyScalar(1)));
+          const pxPerUnitX = Math.max(1e-3, Math.abs(pR[0] - p0[0]));
+          const pxPerUnitY = Math.max(1e-3, Math.abs(pU[1] - p0[1]));
+          const wx = dx / pxPerUnitX;
+          const wy = dy / pxPerUnitY;
+          return base.clone().add(r.multiplyScalar(wx)).add(u.multiplyScalar(wy));
+        };
+        const overlaps = (a: { minX: number; minY: number; maxX: number; maxY: number }) => {
+          for (const b of placed) {
+            if (!(a.maxX < b.box.minX || a.minX > b.box.maxX || a.maxY < b.box.minY || a.minY > b.box.maxY)) return true;
+          }
+          return false;
+        };
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+        glows.forEach((g) => {
           const meshNorm = norm(g.name);
           const dt = chartDeviceTypes.find((d) => {
             const dn = norm(d);
             return dn.includes(meshNorm) || meshNorm.includes(dn);
           }) || chartDeviceTypes[0];
-          return (
-            <Html key={`chart-${g.name}`} center position={pos} style={{ pointerEvents: "auto" }}>
-              <div style={{ transform: "scale(0.6)", transformOrigin: "top center" }}>
-                <div style={{ width: 600, maxWidth: 640, background: "rgba(0,0,0,0.8)", color: "#fff", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 12, padding: 12, boxShadow: "0 12px 30px rgba(0,0,0,0.55)" }}>
-                  <div style={{ marginBottom: 10 }}>
-                    <LatestDashboard deviceMap={chartDeviceMap} device={[dt]} dataType={chartDataTypes} compact />
-                  </div>
-                  <LatestLineChart
-                    deviceMap={chartDeviceMap}
-                    deviceType={dt}
-                    dataType={chartDataTypes}
-                    maxPoints={chartMaxPoints}
-                    title="Realtime Line Chart"
-                    height={260}
-                    historyRef={chartHistoryRef}
-                  />
-                </div>
-              </div>
-            </Html>
-          );
-        })
-      )}
-    </group>
-  );
-}
-function FurnitureDetail({ controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed }: { controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean }) {
-  const { camera } = useThree();
-  const gltf: any = useGLTF("/3dmodel/Furniture.glb");
-  const groupRef = useRef<THREE.Group>(null);
-  const [glows, setGlows] = useState<{ name: string; center: [number, number, number]; radius: number }[]>([]);
-
-  useEffect(() => {
-    if (!gltf?.scene) return;
-    const box = new THREE.Box3().setFromObject(gltf.scene);
-    const sphere = new THREE.Sphere();
-    box.getBoundingSphere(sphere);
-    const center = sphere.center;
-    controlsRef.current?.target.copy(center);
-    controlsRef.current?.update();
-
-    camera.position.set(center.x, center.y + sphere.radius * 0.6, center.z + sphere.radius * 2.2);
-    camera.near = Math.max(0.1, sphere.radius / 100);
-    camera.far = Math.max(1000, sphere.radius * 100);
-    camera.updateProjectionMatrix();
-  }, [gltf, controlsRef, camera]);
-
-  useEffect(() => {
-    const res: { name: string; center: [number, number, number]; radius: number }[] = [];
-    if (!gltf?.scene) { setGlows([]); return; }
-    selectedMeshNames.forEach((n) => {
-      const obj = gltf.scene.getObjectByName?.(n);
-      if (!obj) return;
-      const box = new THREE.Box3().setFromObject(obj);
-      const sphere = new THREE.Sphere();
-      box.getBoundingSphere(sphere);
-      const worldCenter = sphere.center.clone();
-      const localCenter = worldCenter.clone();
-      if (groupRef.current) {
-        groupRef.current.worldToLocal(localCenter);
-      }
-      res.push({ name: n, center: [localCenter.x, localCenter.y, localCenter.z], radius: sphere.radius });
-    });
-    setGlows(res);
-  }, [selectedMeshNames, gltf]);
-
-  return (
-    <group ref={groupRef}>
-      {gltf?.scene && (
-      <primitive
-        object={gltf.scene}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          const obj = e.object as THREE.Object3D;
-          const meshName = (obj as any)?.name || "Unnamed";
-          if (isMeshAllowed && !isMeshAllowed(meshName)) {
-            return;
+          const base = new THREE.Vector3(g.center[0], g.center[1] + g.radius * 0.9, g.center[2]);
+          let dx = 0;
+          let dy = 0;
+          let posWorld = base;
+          for (let t = 0; t < 50; t++) {
+            posWorld = worldOffset(base, dx, dy);
+            const [sx, sy] = project(posWorld);
+            const box = { minX: sx - BOX_W / 2, minY: sy - BOX_H / 2, maxX: sx + BOX_W / 2, maxY: sy + BOX_H / 2 };
+            if (!overlaps(box)) { placed.push({ box, pos: [posWorld.x, posWorld.y, posWorld.z], dt }); break; }
+            const k = t + 1;
+            const sign = k % 2 === 0 ? -1 : 1;
+            dx = sign * Math.ceil(k / 2) * stepX;
+            if (k % 4 === 0) dy += stepY;
           }
-          onMeshSelected?.(meshName);
-        }}
-      />)}
-      {glows.map((g) => (
-        <GlowShell key={g.name} center={g.center} radius={g.radius} />
-      ))}
+          if (placed.length === 0) {
+            const [sx, sy] = project(posWorld);
+            const box = { minX: sx - BOX_W / 2, minY: sy - BOX_H / 2, maxX: sx + BOX_W / 2, maxY: sy + BOX_H / 2 };
+            placed.push({ box, pos: [posWorld.x, posWorld.y, posWorld.z], dt });
+          }
+        });
+        return placed.map((p, idx) => (
+          <Html key={`chart-${idx}`} center position={p.pos} style={{ pointerEvents: "none", userSelect: "none" }}>
+            <div style={{ transform: "scale(0.6)", transformOrigin: "top center" }}>
+              <div style={{ width: 450, maxWidth: 450, background: "rgba(0,0,0,0.8)", color: "#fff", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 12, padding: 6, boxShadow: "0 6px 16px rgba(0,0,0,0.4)" }}>
+                <div style={{ marginBottom: 6 }}>
+                  <LatestDashboard deviceMap={chartDeviceMap} device={[p.dt]} dataType={chartDataTypes} compact />
+                </div>
+                <LatestLineChart
+                  deviceMap={chartDeviceMap}
+                  deviceType={p.dt}
+                  dataType={chartDataTypes}
+                  maxPoints={chartMaxPoints}
+                  title="Realtime Line Chart"
+                  height={120}
+                  historyRef={chartHistoryRef}
+                />
+              </div>
+            </div>
+          </Html>
+        ));
+      })()}
     </group>
   );
 }
-
 interface GridOptions {
   position: THREE.Vector3 | [number, number, number];
   gridSize: number;
@@ -1348,29 +1330,6 @@ function CanvasDecor({ mode, currentRegion }: { mode: "map" | "region" | "detail
         />
       )}
     </>
-  );
-}
-
-function CameraHUD({ controlsRef }: { controlsRef: any }) {
-  const { camera } = useThree();
-  const [info, setInfo] = useState({ x: 0, y: 0, z: 0, r: 0, alpha: 0, beta: 0 });
-  useFrame(() => {
-    const target = controlsRef?.current?.target ?? new THREE.Vector3(0, 0, 0);
-    const delta = new THREE.Vector3().copy(camera.position).sub(target);
-    const sph = new THREE.Spherical().setFromVector3(delta);
-    setInfo({
-      x: Number(camera.position.x.toFixed(1)),
-      y: Number(camera.position.y.toFixed(1)),
-      z: Number(camera.position.z.toFixed(1)),
-      r: Number(sph.radius.toFixed(1)),
-      alpha: Number(THREE.MathUtils.radToDeg(sph.theta).toFixed(1)),
-      beta: Number(THREE.MathUtils.radToDeg(sph.phi).toFixed(1))
-    });
-  });
-  return (
-    <Html transform={false} style={{ position: "absolute", top: 16, right: 16, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "6px 8px", borderRadius: 6, font: "12px/1.2 system-ui" }}>
-      {`pos: (${info.x}, ${info.y}, ${info.z}) r: ${info.r} α: ${info.alpha}° β: ${info.beta}°`}
-    </Html>
   );
 }
 
