@@ -1,6 +1,7 @@
 // App.js
 "use client";
 import Image from 'next/image';
+import { asset } from './lib/asset';
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "react-oidc-context";
 
@@ -9,7 +10,7 @@ function App() {
   const auth = useAuth();
   // Theme state
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-b');
-  const [logoSrc, setLogoSrc] = useState('/logos/logo1.png');
+  const [logoSrc, setLogoSrc] = useState(asset('/logos/logo1.png'));
   const [mode, setMode] = useState<'mode-light' | 'mode-dark'>('mode-light');
   // Dynamic brand title per theme
   const brandTitle = theme === 'theme-a' ? 'RHT Limited' : theme === 'theme-b' ? 'CMA testing' : 'Natsense';
@@ -20,7 +21,7 @@ function App() {
     const themeToApply = savedTheme || 'theme-a';
     setTheme(themeToApply);
     const logoIndex = themeToApply === 'theme-a' ? 1 : themeToApply === 'theme-b' ? 2 : 3;
-    setLogoSrc(`/logos/logo${logoIndex}.png`);
+    setLogoSrc(asset(`/logos/logo${logoIndex}.png`));
 
     const savedMode = (typeof window !== 'undefined' && localStorage.getItem('mode-name')) as 'mode-light' | 'mode-dark' | null;
     const modeToApply = savedMode || 'mode-light';
@@ -37,7 +38,7 @@ function App() {
     setTheme(value);
     localStorage.setItem('theme-name', value);
     const logoIndex = value === 'theme-a' ? 1 : value === 'theme-b' ? 2 : 3;
-    setLogoSrc(`/logos/logo${logoIndex}.png`);
+    setLogoSrc(asset(`/logos/logo${logoIndex}.png`));
     const cls = document.body.classList;
     cls.remove('theme-a', 'theme-b', 'theme-c');
     cls.add(value);
@@ -70,7 +71,7 @@ function App() {
     <div className="page-container" style={{ paddingTop: 24 }}>
       <div className="brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Image src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+          <Image src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
           <span className="brand-title">{brandTitle}</span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -89,8 +90,8 @@ function App() {
       <section className="hero">
         <h1 className="hero-title">{brandTitle}</h1>
         <div className="hero-actions"> 
-        <Image src={'/companyPhoto/RHT2.avif'} alt="Company Logo" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
-        <Image src={'/companyPhoto/RHT1.avif'} alt="Company Logo" style={{ height: '400px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+        <Image src={asset('/companyPhoto/RHT2.avif')} alt="Company Logo" onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
+        <Image src={asset('/companyPhoto/RHT1.avif')} alt="Company Logo" style={{ height: '400px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
         </div>
         <p className="hero-subtitle">Sign in to view dashboards, filter data, and export CSV.</p>
         <div className="hero-actions"> 

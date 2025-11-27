@@ -4,6 +4,7 @@ import { useAuth } from "react-oidc-context";
 import Form from 'react-bootstrap/Form';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, TimeSeriesScale, ArcElement, ChartOptions } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import { asset } from "../lib/asset";
 import { LatestDashboard } from "../components/DashboardGauges";
 import { getIMEIList, getLatestDP, getDPFromTime } from "../lib/aws";
 import 'chartjs-adapter-date-fns';
@@ -193,7 +194,7 @@ function LoginApp() {
 
   // Theme state
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-b');
-  const [logoSrc, setLogoSrc] = useState('/logos/logo1.png');
+  const [logoSrc, setLogoSrc] = useState(asset('/logos/logo1.png'));
   const [mode, setMode] = useState<'mode-light' | 'mode-dark'>('mode-light');
   const [activeTab, setActiveTab] = useState<'latest' | 'history' | '3d' | 'control'>('latest');
   // Dynamic brand title per theme
@@ -239,7 +240,7 @@ function LoginApp() {
     const themeToApply = savedTheme || 'theme-a';
     setTheme(themeToApply);
     const logoIndex = themeToApply === 'theme-a' ? 1 : themeToApply === 'theme-b' ? 2 : 3;
-    setLogoSrc(`/logos/logo${logoIndex}.png`);
+    setLogoSrc(asset(`/logos/logo${logoIndex}.png`));
 
     const savedMode = (typeof window !== 'undefined' && localStorage.getItem('mode-name')) as 'mode-light' | 'mode-dark' | null;
     const modeToApply = savedMode || 'mode-light';
@@ -256,7 +257,7 @@ function LoginApp() {
     setTheme(value);
     localStorage.setItem('theme-name', value);
     const logoIndex = value === 'theme-a' ? 1 : value === 'theme-b' ? 2 : 3;
-    setLogoSrc(`/logos/logo${logoIndex}.png`);
+    setLogoSrc(asset(`/logos/logo${logoIndex}.png`));
     const cls = document.body.classList;
     cls.remove('theme-a', 'theme-b', 'theme-c');
     cls.add(value);
@@ -506,7 +507,7 @@ function LoginApp() {
       {/* Fixed top navigation with brand header */}
       <header className="top-nav brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Image src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/next.svg'; }} />
+          <Image src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
           <span className="brand-title">{brandTitle}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -521,10 +522,10 @@ function LoginApp() {
       {/* Fixed left navigation bar */}
       <nav className="side-nav">
         
-        <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}> <Image src="dashboard.png" alt="Latest" style={{ height: '36px' }}/>Latest Data</button>
-        <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}><Image src="chart.png" alt="Latest" style={{ height: '36px' }}/>History Data</button>
-        <a className="brand-button" href="/3d"><Image src="3d.png" alt="Latest" style={{ height: '36px' }}/>3D Mode</a>
-        <a className="brand-button" href="/controlPanel"><Image src="ControlPanel.png" alt="Latest" style={{ height: '36px' }}/>Control Panel</a>
+        <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}> <Image src={asset('/dashboard.png')} alt="Latest" style={{ height: '36px' }}/>Latest Data</button>
+        <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}><Image src={asset('/chart.png')} alt="Latest" style={{ height: '36px' }}/>History Data</button>
+        <a className="brand-button" href="/3d"><Image src={asset('/3d.png')} alt="Latest" style={{ height: '36px' }}/>3D Mode</a>
+        <a className="brand-button" href="/controlPanel"><Image src={asset('/ControlPanel.png')} alt="Latest" style={{ height: '36px' }}/>Control Panel</a>
       </nav>
 
       <div className="content-shell">

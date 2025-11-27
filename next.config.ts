@@ -9,6 +9,9 @@ const nextConfig = {
   },
   assetPrefix: isProd ? '/ReactWeb/' : '',
   basePath: isProd ? '/ReactWeb' : '',
+  env: {
+    NEXT_PUBLIC_BASE_PATH: isProd ? '/ReactWeb' : ''
+  },
   output: 'export'
 };
 
