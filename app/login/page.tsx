@@ -201,6 +201,12 @@ function LoginApp() {
   // Dynamic brand title per theme
   const brandTitle = theme === 'theme-a' ? 'RHT Limited' : theme === 'theme-b' ? 'CMA testing' : 'Natsense';
 
+  // Add a body class to adjust global footer when sidebar is present
+  useEffect(() => {
+    document.body.classList.add('has-side-nav');
+    return () => { document.body.classList.remove('has-side-nav'); };
+  }, []);
+
   const options: ChartOptions<'line'> = {
     responsive: true,
     maintainAspectRatio: false,

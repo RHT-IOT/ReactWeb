@@ -262,7 +262,13 @@ body {
   border-color: var(--nav-active-bg, var(--brand-primary)) !important;
 }
 .content-shell { padding-left: 240px; padding-top: var(--top-nav-height, 56px); }
-@media (max-width: 900px) { .content-shell { padding-left: 0; } }
+@media (max-width: 1200px) { .content-shell { padding-left: 200px; } }
+@media (max-width: 900px) { .content-shell { padding-left: 64px; } }
+
+/* When a page has a fixed side-nav, offset footer so it's not covered */
+.has-side-nav .footer { padding-left: 240px; }
+@media (max-width: 1200px) { .has-side-nav .footer { padding-left: 200px; } }
+@media (max-width: 900px) { .has-side-nav .footer { padding-left: 64px; } }
 
 /* Hide root footer when viewing 3D page */
 .no-footer .footer {

@@ -1,104 +1,6 @@
 "use client";
-import React, { useRef, useEffect } from "react";
-import { Doughnut } from 'react-chartjs-2';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-
-ChartJS.register(ArcElement, Tooltip, Legend);
-
-export function GaugeCard({ title, value, max = 100, unit = '', color = '#26b6b2', compact = false }: any) {
-  const v = Math.max(0, Math.min(Number(value), Number(max)));
-  const remainder = Math.max(0, Number(max) - v);
-  const fontSize = compact ? 16 : 20;
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Resize handling to keep chart centered
-  useEffect(() => {
-    const handleResize = () => {
-      const parent = containerRef.current?.querySelector('canvas')?.parentElement as any;
-      parent?.forceUpdate?.();
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [compact]);
-
-  const data = {
-    labels: ['Value', 'Remaining'],
-    datasets: [{
-      label: title,
-      data: [v, remainder],
-      backgroundColor: [color, '#d7d9dd'],
-      hoverOffset: 4,
-      borderWidth: 0,
-    }]
-  };
-
-  const optionsGauge: any = {
-    responsive: true,
-    maintainAspectRatio: false,
-    rotation: -125,
-    circumference: Math.PI * 80,
-    cutout: '60%',
-    plugins: {
-      legend: { display: false },
-      tooltip: { enabled: false },
-      title: { display: false },
-    },
-    layout: { padding: 0 }
-  };
-
-  // Merge value and unit into one string (add space between if unit exists)
-
-  return (
-    <div className="panel" style={{ padding: compact ? 10 : 12 }}>
-      {/* Title above gauge */}
-      <div style={{ fontWeight: 800, marginBottom: 8, textAlign: 'center', fontSize: compact ? 18 : 22 }}>{title}</div>
-      
-      {/* Gauge container */}
-      <div 
-        ref={containerRef}
-        style={{ 
-          height: compact ? 120 : 150, 
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {/* Doughnut Chart */}
-        <Doughnut 
-          data={data} 
-          options={optionsGauge} 
-          style={{ width: '100%', height: '100%' }}
-        />
-        
-        {/* Centered text overlay - value + unit together */}
-        <div style={{
-          position: 'absolute',
-          textAlign: 'center',
-          pointerEvents: 'none',
-          // Keep original perfect centering
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          lineHeight: 1,
-        }}>
-          {/* Main value + unit (single line, same format as before) */}
-          <div style={{
-            fontSize: `${fontSize}px`,
-            fontWeight: 800,
-            color: '#111',
-            marginTop: 30,
-            display: 'block',
-          }}>
-            <span style={{ fontSize: "22px", fontWeight: "bold" }}>{String(v)}</span>
-            {unit && <span style={{ fontSize: "14px" }}> {unit}</span>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+import React from "react";
+import GaugeCard from "./GaugeCard";
 
 // The rest of the code (inferRange and LatestDashboard) remains UNCHANGED
 function inferRange(key: string, value: number) {
@@ -140,8 +42,10 @@ export function LatestDashboard({ deviceMap, device, dataType, compact = false }
       ? keys.filter(k => dataType.includes(k)) 
       : keys;
     selected.forEach(k => {
-      const { max, unit, color } = inferRange(k, Number(entry[k]));
-      cards.push({ title: `${dev} • ${k}`, value: Number(entry[k]), max, unit, color, ts });
+      const { max, unit } = inferRange(k, Number(entry[k]));
+      const warning = max * 0.7;
+      const danger = max * 0.9;
+      cards.push({ title: `${dev} • ${k}`, subtitle: ts || '', value: Number(entry[k]), min: 0, max, unit, thresholds: { warning, danger } });
     });
   });
   if (cards.length === 0) return <pre>No numeric fields to display</pre>;
@@ -153,7 +57,7 @@ export function LatestDashboard({ deviceMap, device, dataType, compact = false }
         gap: compact ? 12 : 16 
       }}>
         {cards.map((c, idx) => (
-          <GaugeCard key={idx} {...c} compact={compact} />
+          <GaugeCard key={idx} {...c} />
         ))}
       </div>
     </div>
