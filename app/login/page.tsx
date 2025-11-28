@@ -521,16 +521,27 @@ function LoginApp() {
             <option value="mode-dark">Dark</option>
           </select>
           <button className="brand-button button-outline" onClick={() => signOutRedirect()}>Sign out</button>            
-          { auth.user?.profile.email === "natsense00@gmail.com" ? <button className="brand-button button-outline" onClick={() => window.location.replace('/admin')}>admin</button> :<></>}           
+          { auth.user?.profile.email === "natsense00@gmail.com" ? <button className="brand-button button-outline" onClick={() => window.location.replace(asset("/admin"))}>admin</button> :<></>}           
         </div>
       </header>
       {/* Fixed left navigation bar */}
       <nav className="side-nav">
-        
-        <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}> <Image src={asset('/dashboard.png')} alt="Latest" width={36} height={36}/>Latest Data</button>
-        <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}><Image src={asset('/chart.png')} alt="Latest" width={36} height={36}/>History Data</button>
-        <a className="brand-button" href={asset('/3d')}><Image src={asset('/3d.png')} alt="Latest" width={36} height={36}/>3D Mode</a>
-        <a className="brand-button" href={asset('/controlPanel')}><Image src={asset('/ControlPanel.png')} alt="Latest" width={36} height={36}/>Control Panel</a>
+        <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}>
+          <Image src={asset('/dashboard.png')} alt="Latest" width={36} height={36}/>
+          <span className="nav-label">Latest Data</span>
+        </button>
+        <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}>
+          <Image src={asset('/chart.png')} alt="History" width={36} height={36}/>
+          <span className="nav-label">History Data</span>
+        </button>
+        <a className="brand-button" href={asset('/3d')}>
+          <Image src={asset('/3d.png')} alt="3D" width={36} height={36}/>
+          <span className="nav-label">3D Mode</span>
+        </a>
+        <a className="brand-button" href={asset('/controlPanel')}>
+          <Image src={asset('/ControlPanel.png')} alt="Control" width={36} height={36}/>
+          <span className="nav-label">Control Panel</span>
+        </a>
       </nav>
 
       <div className="content-shell">
