@@ -529,8 +529,8 @@ function LoginApp() {
         
         <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}> <Image src={asset('/dashboard.png')} alt="Latest" width={36} height={36}/>Latest Data</button>
         <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}><Image src={asset('/chart.png')} alt="Latest" width={36} height={36}/>History Data</button>
-        <a className="brand-button" href="/3d"><Image src={asset('/3d.png')} alt="Latest" width={36} height={36}/>3D Mode</a>
-        <a className="brand-button" href="/controlPanel"><Image src={asset('/ControlPanel.png')} alt="Latest" width={36} height={36}/>Control Panel</a>
+        <a className="brand-button" href={asset('/3d')}><Image src={asset('/3d.png')} alt="Latest" width={36} height={36}/>3D Mode</a>
+        <a className="brand-button" href={asset('/controlPanel')}><Image src={asset('/ControlPanel.png')} alt="Latest" width={36} height={36}/>Control Panel</a>
       </nav>
 
       <div className="content-shell">

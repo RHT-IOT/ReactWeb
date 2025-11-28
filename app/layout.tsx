@@ -5,6 +5,7 @@ import "./themes/theme-a.css";
 import "./themes/theme-b.css";
 import "./themes/theme-c.css";
 import { usePathname } from "next/navigation";
+import { asset } from './lib/asset';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -20,8 +21,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="footer-top">
               <div className="footer-brand-name">RHT Industries Ltd.</div>
               <nav className="footer-links">
-                <a href="/about" className="footer-link">About Us</a>
-                <a href="/contact" className="footer-link">Contact Us</a>
+                <a href={asset('/about')} className="footer-link">About Us</a>
+                <a href={asset('/contact')} className="footer-link">Contact Us</a>
               </nav>
             </div>
             <div className="footer-contact">
@@ -96,8 +97,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="footer-top">
               <div className="footer-brand-name">Natsense</div>
               <nav className="footer-links">
-                <a href="/about" className="footer-link">About</a>
-                <a href="/contact" className="footer-link">Contact</a>
+                <a href={asset('/about')} className="footer-link">About</a>
+                <a href={asset('/contact')} className="footer-link">Contact</a>
               </nav>
             </div>
             <div className="footer-contact">© 2024 Natsense. All rights reserved.</div>

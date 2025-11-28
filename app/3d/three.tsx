@@ -13,6 +13,7 @@ import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { point as turfPoint } from "@turf/helpers";
 
 import Image from 'next/image';
+import { asset } from '../lib/asset';
 const projection = d3.geoMercator().scale(400).translate([0, 0]);
 
 function coordsToShape(coords) {
@@ -658,7 +659,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   // Load geojson for current mapFile
   useEffect(() => {
     let cancelled = false;
-    fetch(`/3dmodel/${mapFile}`)
+    fetch(asset(`/3dmodel/${mapFile}`))
       .then(res => {
         if (!res.ok) throw new Error(`Failed to load ${mapFile}`);
         return res.json();
@@ -668,7 +669,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
         console.error("GeoJSON load error:", err);
         if (!cancelled && mapFile !== "China.json") {
           // Fallback to China.json if specific file missing
-          fetch('/3dmodel/China.json')
+          fetch(asset('/3dmodel/China.json'))
             .then(r => r.json())
             .then(setGeojson)
             .catch(e => console.error("Fallback load error:", e));
@@ -830,7 +831,9 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           <button className="brand-button" onClick={backMainMap}>Back to main map</button>
         </div>
         <div style={{ position: "absolute", top: 70, left: 16, zIndex: 1, padding: "8px 12px", borderRadius: 8, backgroundColor: "rgba(0, 0, 0, 0)" }}>
-        <a href="/login"><Image src="2d.png" alt="Latest" style={{ height: '36px' }}/></a>
+        <a href={asset('/login')}>
+          <Image src={asset('/2d.png')} alt="Latest" width={36} height={36} />
+        </a>
         </div>
         <Canvas
           camera={{ position: [33.4, -202.9, 447.9], fov: 45 }}
@@ -850,7 +853,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           {mode === "detail" && selectedLabel === "BOCYH" && (
             <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
               <CMADetail
-                glbName={"/3dmodel/1403.glb"}
+                glbName={asset('/3dmodel/1403.glb')}
                 controlsRef={controlsRef}
                 onMeshSelected={handleMeshSelected}
                 selectedMeshNames={selectedMeshNames}
@@ -868,7 +871,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           {mode === "detail" && selectedLabel === "BOCDSS" && (
             <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
               <CMADetail
-                glbName={"/3dmodel/CMA+.glb"}
+                glbName={asset('/3dmodel/CMA+.glb')}
                 controlsRef={controlsRef}
                 onMeshSelected={handleMeshSelected}
                 selectedMeshNames={selectedMeshNames}
