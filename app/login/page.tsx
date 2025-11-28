@@ -12,6 +12,7 @@ import DateTimeRangePickerValue from "../datepicker";
 import dayjs from "dayjs";
 
 import Image from 'next/image';
+import { getOidcConfig, buildLogoutUrl } from "../authConfig";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, TimeSeriesScale, ArcElement);
 
 // Center text plugin is provided by shared DashboardGauges; local plugin removed.
@@ -471,11 +472,15 @@ function LoginApp() {
   const chartData = prepareChartData();
 
   const signOutRedirect = () => {
-    const clientId = "7bj6qolgca3bbcshiuiinp9tj4";
-    const logoutUri = `${window.location.origin}/`;
-    const cognitoDomain = "https://ap-southeast-2d19wijvbp.auth.ap-southeast-2.amazoncognito.com";
+    const config = getOidcConfig();
     try { (auth as any)?.removeUser?.(); } catch {}
-    window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
+    const url = buildLogoutUrl(config);
+    if (url) {
+      window.location.href = url;
+    } else {
+      // Fallback: clear user and reload root
+      window.location.href = '/';
+    }
   };
 
 
@@ -507,7 +512,7 @@ function LoginApp() {
       {/* Fixed top navigation with brand header */}
       <header className="top-nav brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Image src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
+          <Image src={logoSrc} alt="Company Logo" width={36} height={36} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
           <span className="brand-title">{brandTitle}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -522,10 +527,10 @@ function LoginApp() {
       {/* Fixed left navigation bar */}
       <nav className="side-nav">
         
-        <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}> <Image src={asset('/dashboard.png')} alt="Latest" style={{ height: '36px' }}/>Latest Data</button>
-        <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}><Image src={asset('/chart.png')} alt="Latest" style={{ height: '36px' }}/>History Data</button>
-        <a className="brand-button" href="/3d"><Image src={asset('/3d.png')} alt="Latest" style={{ height: '36px' }}/>3D Mode</a>
-        <a className="brand-button" href="/controlPanel"><Image src={asset('/ControlPanel.png')} alt="Latest" style={{ height: '36px' }}/>Control Panel</a>
+        <button className={`brand-button ${activeTab === 'latest' ? 'is-active' : ''}`} onClick={() => setActiveTab('latest')}> <Image src={asset('/dashboard.png')} alt="Latest" width={36} height={36}/>Latest Data</button>
+        <button className={`brand-button ${activeTab === 'history' ? 'is-active' : ''}`} onClick={() => setActiveTab('history')}><Image src={asset('/chart.png')} alt="Latest" width={36} height={36}/>History Data</button>
+        <a className="brand-button" href="/3d"><Image src={asset('/3d.png')} alt="Latest" width={36} height={36}/>3D Mode</a>
+        <a className="brand-button" href="/controlPanel"><Image src={asset('/ControlPanel.png')} alt="Latest" width={36} height={36}/>Control Panel</a>
       </nav>
 
       <div className="content-shell">

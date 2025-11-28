@@ -1,8 +1,9 @@
 "use client";
 
 import { AuthProvider } from "react-oidc-context";
-import { oidcConfig } from "./authConfig";
+import { getOidcConfig } from "./authConfig";
 
 export default function OidcProvider({ children }: { children: React.ReactNode }) {
-  return <AuthProvider {...oidcConfig}>{children}</AuthProvider>;
+  const config = getOidcConfig();
+  return <AuthProvider {...config}>{children}</AuthProvider>;
 }

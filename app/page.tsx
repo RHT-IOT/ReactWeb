@@ -71,7 +71,7 @@ function App() {
     <div className="page-container" style={{ paddingTop: 24 }}>
       <div className="brand-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Image src={logoSrc} alt="Company Logo" style={{ height: '36px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
+          <Image src={logoSrc} alt="Company Logo" width={36} height={36} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
           <span className="brand-title">{brandTitle}</span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -90,8 +90,8 @@ function App() {
       <section className="hero">
         <h1 className="hero-title">{brandTitle}</h1>
         <div className="hero-actions"> 
-        <Image src={asset('/companyPhoto/RHT2.avif')} alt="Company Logo" onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
-        <Image src={asset('/companyPhoto/RHT1.avif')} alt="Company Logo" style={{ height: '400px' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
+        <Image src={asset('/companyPhoto/RHT2.avif')} alt="Company Logo" width={600} height={400} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
+        <Image src={asset('/companyPhoto/RHT1.avif')} alt="Company Logo" width={600} height={400} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
         </div>
         <p className="hero-subtitle">Sign in to view dashboards, filter data, and export CSV.</p>
         <div className="hero-actions"> 
