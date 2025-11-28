@@ -21,7 +21,7 @@ function ThreeDApp() {
         return () => { cls.remove('no-footer'); };
     }, []);
     return (
-      <div style={{ position: 'fixed', inset: 0 }}>
+      <div style={{ position: 'fixed', inset: 0, height: '100svh' }}>
         <Map3DComponent />
       </div>
     );

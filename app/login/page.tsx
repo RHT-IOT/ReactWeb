@@ -501,7 +501,7 @@ function LoginApp() {
         <div className="panel">
           <div className="section-title">Not signed in</div>
           <p>Please go to the home page and click Sign in.</p>
-          <a href="/" className="brand-button">Go to Home</a>
+          <a href={asset("/")} className="brand-button">Go to Home</a>
         </div>
       </div>
     );

@@ -90,8 +90,8 @@ function App() {
       <section className="hero">
         <h1 className="hero-title">{brandTitle}</h1>
         <div className="hero-actions"> 
-        <Image src={asset('/companyPhoto/RHT2.avif')} alt="Company Logo" width={600} height={400} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
-        <Image src={asset('/companyPhoto/RHT1.avif')} alt="Company Logo" width={600} height={400} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
+        <Image src={asset('/companyPhoto/RHT2.avif')} alt="Company Logo" width={600} height={400} sizes="(max-width: 900px) 100vw, 600px" style={{ width: '100%', height: 'auto' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
+        <Image src={asset('/companyPhoto/RHT1.avif')} alt="Company Logo" width={600} height={400} sizes="(max-width: 900px) 100vw, 600px" style={{ width: '100%', height: 'auto' }} onError={(e) => { (e.currentTarget as HTMLImageElement).src = asset('/next.svg'); }} />
         </div>
         <p className="hero-subtitle">Sign in to view dashboards, filter data, and export CSV.</p>
         <div className="hero-actions"> 
