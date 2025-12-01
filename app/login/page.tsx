@@ -64,27 +64,59 @@ function DropboxDev({ devicearr, setcurrdev, allowed }: { devicearr: any; setcur
     </Form.Select>
   );
 }
-function DropboxTime({setValue}) {
-  const handleSelect=(e: React.ChangeEvent<HTMLSelectElement>)=>{
-    if(e.target.value){
-      setValue(e.target.value)
-    }
-  }
+function TimeIntervalInput({ setValue }: { setValue: (v: string) => void }) {
+  const [num, setNum] = useState<string>('5');
+  const ALLOWED_BUCKETS = {
+    "min": 1,
+    "hr": 60,
+    "day": 1440
+  };
+  const [unit, setUnit] = useState<'min' | 'hr' | 'day'>('min');
+  const bucketCount = Number(num)*ALLOWED_BUCKETS[unit];
+  setValue(`${bucketCount}`); 
   return (
-    <Form.Select className="brand-select" aria-label="Default select example" onChange={handleSelect}>
-      <option>Choose Time Interval</option>
-      <option value="1min">1 min</option>
-      <option value="5min">5 min</option>
-      <option value="15min">15 min</option>
-      <option value="1hr">1 hours</option>
-      <option value="1day">1 day</option>
-    </Form.Select>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <Form.Control type="number" min={1} value={num} onChange={(e) => setNum(e.target.value)} style={{ maxWidth: 120 }} />
+      <Form.Select value={unit} onChange={(e) => setUnit(e.target.value as any)} style={{ maxWidth: 140 }}>
+        <option value="min">Minutes</option>
+        <option value="hr">Hours</option>
+        <option value="day">Days</option>
+      </Form.Select>
+    </div>
   );
 }
 
-function DataTypeDropdown({ timeSeriesData, device, dataType, setDataType }: { timeSeriesData: any[]; device: string[]; dataType: string[]; setDataType: (v: string[]) => void }) {
+function DataTypeDropdown({ deviceMap, timeSeriesData, device, dataType, setDataType }: { deviceMap?: Record<string, any>; timeSeriesData: any[]; device: string[]; dataType: string[]; setDataType: (v: string[]) => void }) {
   if (!timeSeriesData || timeSeriesData.length === 0 || !device || device.length === 0) {
-    return <p>Select device(s) first</p>;
+    // Fallback: infer fields from latest deviceMap when timeSeries not yet loaded
+    const meta = new Set(["DeviceID", "DeviceType", "Timestamp"]);
+    const fields = new Set<string>();
+    if (deviceMap && device && device.length > 0) {
+      device.forEach((dt) => {
+        const rec = (deviceMap as any)[dt];
+        if (rec && typeof rec === 'object') {
+          Object.keys(rec).forEach((k) => {
+            const val = (rec as any)[k];
+            if (!meta.has(k) && typeof val === 'number') fields.add(k);
+          });
+        }
+      });
+    }
+    const dataFields = Array.from(fields);
+    if (dataFields.length === 0) return <p>Select device(s) first</p>;
+    const handleMultiSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+      setDataType(selected);
+    };
+    return (
+      <Form.Select multiple className="brand-select" aria-label="Select data types" value={dataType} onChange={handleMultiSelect}>
+        {dataFields.map(field => (
+          <option key={field} value={field}>
+            {field}
+          </option>
+        ))}
+      </Form.Select>
+    );
   }
 
   const meta = new Set(["DeviceID", "DeviceType", "Timestamp"]);
@@ -207,6 +239,7 @@ function LoginApp() {
     return () => { document.body.classList.remove('has-side-nav'); };
   }, []);
 
+  const timeUnit: 'minute' | 'hour' | 'day' = timeInterval?.includes('day') ? 'day' : timeInterval?.includes('hr') ? 'hour' : 'minute';
   const options: ChartOptions<'line'> = {
     responsive: true,
     maintainAspectRatio: false,
@@ -223,7 +256,7 @@ function LoginApp() {
       x: {
         type: 'timeseries',
         time: {
-          unit: 'minute'
+          unit: timeUnit
         },
         title: {
           display: true,
@@ -343,6 +376,13 @@ function LoginApp() {
     IMEIs.forEach(id => (allowedByDeviceId[String(id)] || []).forEach(dt => union.add(dt)));
     setAllowedDeviceTypes(Array.from(union));
   }, [IMEIs, allowedByDeviceId]);
+
+  // Auto-fetch latest devices/data types when IMEIs change on History tab
+  useEffect(() => {
+    if (activeTab !== 'history') return;
+    if (!IMEIs || IMEIs.length === 0) return;
+    getLatestDp();
+  }, [IMEIs, activeTab]);
 
   // Maintain per-IMEI device selections and compute union into `device`
   const handleDevicesForImei = (imei: string, values: string[]) => {
@@ -594,7 +634,7 @@ function LoginApp() {
                   )}
                   <p>Datatype:</p>
                   <div className="control-row">
-                    <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
+                    <DataTypeDropdown deviceMap={deviceMap as any} timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
                   </div>
                   <div className="control-row">
                     <button className="brand-button" onClick={() => { getLatestDp(); startAutoRefresh(); }} style={{ marginRight: 8 }}>Get New Data</button>
@@ -646,11 +686,11 @@ function LoginApp() {
                   )}
                   <p>Datatype:</p>
                   <div className="control-row">
-                    <DataTypeDropdown timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
+                    <DataTypeDropdown deviceMap={deviceMap as any} timeSeriesData={timeSeriesData} device={device} dataType={dataType} setDataType={setDataType} />
                   </div>
                   <p>Average Interval:</p>
                   <div className="control-row">
-                    <DropboxTime setValue={setTimeInterval} />
+                    <TimeIntervalInput setValue={setTimeInterval} />
                   </div>
                   <div className="control-row">
                     <DateTimeRangePickerValue setStartDateTime={setStartDateTime} setEndDateTime={setEndDateTime} />
