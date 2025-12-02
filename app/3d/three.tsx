@@ -532,7 +532,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   // Track whether Ctrl/Shift is pressed to enable multi-select interactions
   const [multiKeyDown, setMultiKeyDown] = useState<boolean>(false);
   const [rtDevice3D, setRtDevice3D] = useState<string>("");
-  const [updateIntervalMs, setUpdateIntervalMs] = useState<number>(10_000);
+  const [updateIntervalMs, setUpdateIntervalMs] = useState<number>(300000);
   const [maxPoints3D, setMaxPoints3D] = useState<number>(10);
   const [selectedDataTypes3D, setSelectedDataTypes3D] = useState<string[]>([]);
   const availableDataTypes3D = useMemo(() => {
@@ -846,9 +846,11 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
         >
           <CanvasDecor mode={mode} currentRegion={currentRegion} />
           {/* Add environment lighting for PBR materials to look correct */}
-          <Environment preset="city" background={false} />
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[100, 100, 200]} intensity={0.8} />
+          <Environment preset="warehouse" background={false} />
+          <ambientLight intensity={1.5} />
+          {/* <directionalLight position={[0, 200, 0]} intensity={1.0} /> */}
+          {/* Bottom fill light to brighten underside of the scene */}
+          {/* <directionalLight position={[0, -200, 0]} intensity={2.5}/> */}
            {mode !== "detail" && <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} showPillars={mode === "region"} showMarkers={mode === "map"} onFilteredDevices={setVisibleDevices} />}
           {mode === "detail" && selectedLabel === "BOCYH" && (
             <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
@@ -1064,6 +1066,25 @@ function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = []
     camera.updateProjectionMatrix();
     onModelLoaded?.();
   }, [gltf, controlsRef, camera]);
+
+  // Force all materials' metalness to 0 for non-metallic look
+  useEffect(() => {
+    if (!gltf?.scene) return;
+    try {
+      gltf.scene.traverse((obj: any) => {
+        const mat = (obj as any)?.material;
+        if (!mat) return;
+        if (Array.isArray(mat)) {
+          mat.forEach((m: any) => {
+            if (typeof m.metalness === 'number') { m.metalness = 0.0; m.needsUpdate = true; }
+          });
+        } else if (typeof mat.metalness === 'number') {
+          mat.metalness = 0.0;
+          mat.needsUpdate = true;
+        }
+      });
+    } catch {}
+  }, [gltf]);
 
   useEffect(() => {
     const res: { name: string; center: [number, number, number]; radius: number }[] = [];

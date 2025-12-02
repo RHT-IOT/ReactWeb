@@ -43,7 +43,7 @@ export function GaugeCard({
   const colors = statusColors[status];
 
   return (
-    <div className={`${colors.bg} rounded-xl shadow-lg p-6 border-l-4 ${colors.border} transition-all duration-300`}>
+    <div className={`${colors.bg} rounded-xl shadow-lg p-6 border-l-4 ${colors.border} transition-all duration-300`} style={{ backgroundColor: '#ffffff' }}>
       <div className="text-center mb-4">
         <h3 className="text-blue-900 mb-1">{title}</h3>
         <p className="text-xs text-gray-600">{subtitle}</p>
@@ -87,7 +87,7 @@ export function GaugeCard({
 
         <div className="absolute inset-0 flex items-center justify-center pt-8">
           <div className="text-center">
-            <p className={`${colors.text}`}>{value.toFixed(decimals)}</p>
+            <p className={`${colors.text}`} style={{ color: '#000000' }}>{value.toFixed(decimals)}</p>
             <p className="text-xs text-gray-600 mt-1">{unit}</p>
           </div>
         </div>
@@ -109,4 +109,3 @@ export function GaugeCard({
 }
 
 export default GaugeCard;
-
