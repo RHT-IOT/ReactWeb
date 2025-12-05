@@ -16,9 +16,10 @@ type LatestLineChartProps = {
   title?: string;
   height?: number; // per-chart height, default 180
   historyRef?: React.MutableRefObject<HistoryStore>;
+  version?: number; // bump to re-read history on external updates
 };
 
-export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPoints = 10, title = "Realtime Line Chart", height = 180, historyRef }: LatestLineChartProps) {
+export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPoints = 10, title = "Realtime Line Chart", height = 180, historyRef, version = 0 }: LatestLineChartProps) {
   const entry = useMemo(() => {
     if (!deviceMap || !deviceType) return undefined;
     return deviceMap[deviceType];
@@ -35,7 +36,7 @@ export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPo
   const [seriesMap, setSeriesMap] = useState<Record<string, number[]>>({});
   const dataTypeKey = useMemo(() => JSON.stringify([...(dataType ?? [])].sort()), [dataType]);
 
-  // Initialize local render state from history when device changes
+  // Initialize and keep local render state in sync with shared history
   useEffect(() => {
     if (!deviceType) return;
     const store = historyRef?.current;
@@ -44,62 +45,20 @@ export default function LatestLineChart({ deviceMap, deviceType, dataType, maxPo
       setTimestamps([...hist.timestamps]);
       setSeriesMap({ ...hist.seriesMap });
     }
-  }, [deviceType, historyRef]);
+  }, [deviceType, historyRef, version]);
 
-  // Append a new point for all numeric fields on each poll, always keeping up to maxPoints; persist by deviceType
+  // Chart history is appended externally; keep only local view state here.
+
+  // When maxPoints changes, just re-sync from store (store already trimmed externally)
   useEffect(() => {
-    if (!entry || numericFields.length === 0 || !deviceType) return;
-    const tsRaw = entry["Timestamp"];
-    let ts = typeof tsRaw === 'string' ? tsRaw : String(tsRaw ?? '');
-    if (ts.includes('T')) ts = ts.split('.') [0].replace('T', ' ');
-
+    if (!deviceType) return;
     const store = historyRef?.current;
-    const existing = store?.[deviceType] || { timestamps: [], seriesMap: {} };
-    const nextTimestamps = [...existing.timestamps, ts];
-    const trimmedTimestamps = nextTimestamps.length > maxPoints ? nextTimestamps.slice(nextTimestamps.length - maxPoints) : nextTimestamps;
-    const nextSeries: Record<string, number[]> = { ...existing.seriesMap };
-    numericFields.forEach((field) => {
-      const val = entry[field];
-      if (typeof val !== 'number' || !Number.isFinite(val)) return;
-      const arr = nextSeries[field] ? [...nextSeries[field]] : [];
-      arr.push(Number(val));
-      nextSeries[field] = arr.length > maxPoints ? arr.slice(arr.length - maxPoints) : arr;
-    });
-    // Persist to store (keep other fields as-is)
-    if (store) {
-      store[deviceType] = { timestamps: trimmedTimestamps, seriesMap: nextSeries };
+    const hist = store?.[deviceType];
+    if (hist) {
+      setTimestamps([...hist.timestamps]);
+      setSeriesMap({ ...hist.seriesMap });
     }
-    // Reflect into local render state
-    setTimestamps(trimmedTimestamps);
-    setSeriesMap(nextSeries);
-  }, [entry, numericFields, maxPoints, deviceType, historyRef]);
-
-  // When maxPoints changes, trim history for all devices in the store
-  useEffect(() => {
-    const store = historyRef?.current;
-    if (!store) return;
-    Object.keys(store).forEach((dev) => {
-      const hist = store[dev];
-      if (!hist) return;
-      if (hist.timestamps.length > maxPoints) {
-        hist.timestamps = hist.timestamps.slice(hist.timestamps.length - maxPoints);
-      }
-      Object.keys(hist.seriesMap).forEach((k) => {
-        const arr = hist.seriesMap[k] || [];
-        if (arr.length > maxPoints) hist.seriesMap[k] = arr.slice(arr.length - maxPoints);
-      });
-    });
-    // Also trim current view
-    setTimestamps(prev => prev.length > maxPoints ? prev.slice(prev.length - maxPoints) : prev);
-    setSeriesMap(prev => {
-      const next: Record<string, number[]> = {};
-      Object.keys(prev).forEach(k => {
-        const arr = prev[k] || [];
-        next[k] = arr.length > maxPoints ? arr.slice(arr.length - maxPoints) : arr;
-      });
-      return next;
-    });
-  }, [maxPoints, historyRef]);
+  }, [maxPoints, historyRef, deviceType, version]);
 
   const COLORS = ['#36a2eb','#ff6384','#4bc0c0','#9966ff','#ff9f40','#2ecc71','#e74c3c','#3498db','#9b59b6','#16a085'];
 

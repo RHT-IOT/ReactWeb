@@ -91,12 +91,14 @@ export function createLatestDpPoller({
   getIdToken,
   intervalMs = 5 * 60 * 1000,
   callback,
+  errorCallback,
 }: {
   IMEI: string;
   idToken: string;
   getIdToken?: () => Promise<string>;
   intervalMs?: number;
   callback: (result: LatestDPResult) => void;
+  errorCallback?: (error: any) => void;
 }) {
   let timer: number | null = null;
   let currentToken = idToken;
@@ -126,6 +128,7 @@ export function createLatestDpPoller({
       callback(result);
     } catch (e) {
       console.error("Poller tick failed:", e);
+      try { errorCallback?.(e); } catch {}
     }
   }
 

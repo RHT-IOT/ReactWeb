@@ -514,6 +514,21 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const [visibleDevices, setVisibleDevices] = useState<DeviceInfo[]>([]);
   const pollerRef = useRef<any>(null);
   const chartHistoryRef = useRef<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>>({});
+  const [historyVersion, setHistoryVersion] = useState<number>(0);
+  // Hydrate chart history from sessionStorage once to survive auth refresh/remounts
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = window.sessionStorage.getItem('chartHistoryStore');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            chartHistoryRef.current = parsed;
+          }
+        }
+      }
+    } catch {}
+  }, []);
   const getIdTokenAsync = useCallback(async () => {
     try {
       const fn: any = (auth as any)?.signinSilent;
@@ -586,32 +601,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     });
   }, [availableDataTypes3D]);
 
-  // Persist latest points for ALL device types to shared history on each poll
-  useEffect(() => {
-    if (!deviceMap || typeof deviceMap !== 'object') return;
-    const store = chartHistoryRef.current;
-    const meta = new Set(["Timestamp", "DeviceID", "DeviceType"]);
-    Object.keys(deviceMap).forEach((dt) => {
-      const entry = deviceMap[dt];
-      if (!entry || typeof entry !== 'object') return;
-      const tsRaw = entry["Timestamp"];
-      let ts = typeof tsRaw === 'string' ? tsRaw : String(tsRaw ?? '');
-      if (ts.includes('T')) ts = ts.split('.') [0].replace('T', ' ');
-      const existing = store[dt] || { timestamps: [], seriesMap: {} };
-      const nextTimestamps = [...existing.timestamps, ts];
-      const trimmedTimestamps = nextTimestamps.length > maxPoints3D ? nextTimestamps.slice(nextTimestamps.length - maxPoints3D) : nextTimestamps;
-      const nextSeries: Record<string, number[]> = { ...existing.seriesMap };
-      Object.keys(entry).forEach((k) => {
-        if (meta.has(k)) return;
-        const val = entry[k];
-        if (typeof val !== 'number' || !Number.isFinite(val)) return;
-        const arr = nextSeries[k] ? [...nextSeries[k]] : [];
-        arr.push(Number(val));
-        nextSeries[k] = arr.length > maxPoints3D ? arr.slice(arr.length - maxPoints3D) : arr;
-      });
-      store[dt] = { timestamps: trimmedTimestamps, seriesMap: nextSeries };
-    });
-  }, [deviceMap, maxPoints3D]);
+  // Note: history is appended uniformly inside the poller callbacks (success and error)
 
   // Track region based on selected label (keep region when selecting POIs)
   useEffect(() => {
@@ -713,7 +703,71 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
       getIdToken: getIdTokenAsync,
       intervalMs: updateIntervalMs,
       callback: (result) => {
+        // Append a uniform timestamp for all device types, then update deviceMap
+        const store = chartHistoryRef.current;
+        const meta = new Set(["Timestamp", "DeviceID", "DeviceType"]);
+        const nowMs = Date.now();
+        const rounded = Math.floor(nowMs / updateIntervalMs) * updateIntervalMs;
+        const tickTs = new Date(rounded).toISOString().split('.')[0].replace('T', ' ');
+        const types = Object.keys(result.deviceMap || {});
+        types.forEach((dt) => {
+          const entry = (result.deviceMap as any)[dt];
+          if (!entry || typeof entry !== 'object') return;
+          const existing = store[dt] || { timestamps: [], seriesMap: {} };
+          const nextTimestamps = [...existing.timestamps, tickTs];
+          const trimmedTimestamps = nextTimestamps.length > maxPoints3D ? nextTimestamps.slice(nextTimestamps.length - maxPoints3D) : nextTimestamps;
+          const nextSeries: Record<string, number[]> = { ...existing.seriesMap };
+          // Union of existing keys and current numeric fields
+          const currentKeys = Object.keys(entry).filter(k => !meta.has(k) && typeof entry[k] === 'number');
+          const unionKeys = new Set<string>([...Object.keys(nextSeries), ...currentKeys]);
+          unionKeys.forEach((k) => {
+            const arr = nextSeries[k] ? [...nextSeries[k]] : [];
+            const val = entry[k];
+            if (typeof val === 'number' && Number.isFinite(val)) {
+              arr.push(Number(val));
+            } else {
+              // carry forward last known value; if none, append NaN to keep length consistent
+              const last = arr.length > 0 ? arr[arr.length - 1] : NaN;
+              arr.push(last);
+            }
+            nextSeries[k] = arr.length > maxPoints3D ? arr.slice(arr.length - maxPoints3D) : arr;
+          });
+          store[dt] = { timestamps: trimmedTimestamps, seriesMap: nextSeries };
+        });
+        try {
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('chartHistoryStore', JSON.stringify(store));
+          }
+        } catch {}
+        setHistoryVersion(v => v + 1);
         setDeviceMap(result.deviceMap);
+      },
+      errorCallback: (_err) => {
+        // On error, still append a tick with carry-forward values for all known device types
+        const store = chartHistoryRef.current;
+        const nowMs = Date.now();
+        const rounded = Math.floor(nowMs / updateIntervalMs) * updateIntervalMs;
+        const tickTs = new Date(rounded).toISOString().split('.')[0].replace('T', ' ');
+        const types = Object.keys(store || {});
+        types.forEach((dt) => {
+          const existing = store[dt] || { timestamps: [], seriesMap: {} };
+          const nextTimestamps = [...existing.timestamps, tickTs];
+          const trimmedTimestamps = nextTimestamps.length > maxPoints3D ? nextTimestamps.slice(nextTimestamps.length - maxPoints3D) : nextTimestamps;
+          const nextSeries: Record<string, number[]> = {};
+          Object.keys(existing.seriesMap || {}).forEach((k) => {
+            const arr = existing.seriesMap[k] ? [...existing.seriesMap[k]] : [];
+            const last = arr.length > 0 ? arr[arr.length - 1] : NaN;
+            arr.push(last);
+            nextSeries[k] = arr.length > maxPoints3D ? arr.slice(arr.length - maxPoints3D) : arr;
+          });
+          store[dt] = { timestamps: trimmedTimestamps, seriesMap: nextSeries };
+        });
+        try {
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('chartHistoryStore', JSON.stringify(store));
+          }
+        } catch {}
+        setHistoryVersion(v => v + 1);
       },
     });
     pollerRef.current = poller;
@@ -867,6 +921,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
                 chartDataTypes={selectedDataTypes3D}
                 chartMaxPoints={maxPoints3D}
                 chartHistoryRef={chartHistoryRef}
+                historyVersion={historyVersion}
               />
             </Suspense>
           )}
@@ -885,6 +940,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
                 chartDataTypes={selectedDataTypes3D}
                 chartMaxPoints={maxPoints3D}
                 chartHistoryRef={chartHistoryRef}
+                historyVersion={historyVersion}
               />
             </Suspense>
           )}
@@ -987,7 +1043,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
                   selectedDeviceTypes3D.map((dt) => (
                     <React.Fragment key={dt}>
                       <LatestDashboard deviceMap={deviceMap} device={[dt]} dataType={selectedDataTypes3D} compact />
-                      <LatestLineChart deviceMap={deviceMap} deviceType={dt} dataType={selectedDataTypes3D} maxPoints={maxPoints3D} title="Realtime Line Chart" height={180} historyRef={chartHistoryRef} />
+                      <LatestLineChart deviceMap={deviceMap} deviceType={dt} dataType={selectedDataTypes3D} maxPoints={maxPoints3D} title="Realtime Line Chart" height={180} historyRef={chartHistoryRef} version={historyVersion} />
                     </React.Fragment>
                   ))
                 ) : (
@@ -1042,7 +1098,7 @@ function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { pos
   }, [controlsRef, camera, initial]);
   return null;
 }
-function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed, onModelLoaded, showInlineChart = false, chartDeviceMap, chartDeviceTypes, chartDataTypes = [], chartMaxPoints = 10, chartHistoryRef }: { glbName?: string; controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean; onModelLoaded?: () => void; showInlineChart?: boolean; chartDeviceMap?: any; chartDeviceTypes?: string[]; chartDataTypes?: string[]; chartMaxPoints?: number; chartHistoryRef?: React.MutableRefObject<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>> }) {
+function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed, onModelLoaded, showInlineChart = false, chartDeviceMap, chartDeviceTypes, chartDataTypes = [], chartMaxPoints = 10,historyVersion, chartHistoryRef }: { glbName?: string; controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean; onModelLoaded?: () => void; showInlineChart?: boolean; chartDeviceMap?: any; chartDeviceTypes?: string[]; chartDataTypes?: string[]; chartMaxPoints?: number; historyVersion?:number; chartHistoryRef?: React.MutableRefObject<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>> }) {
   const { camera, size } = useThree();
   const gltf: any = useGLTF(glbName);
   const groupRef = useRef<THREE.Group>(null);
@@ -1234,6 +1290,7 @@ function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = []
                       title="Realtime Line Chart"
                       height={120}
                       historyRef={chartHistoryRef}
+                      version={historyVersion}
                     />
                   </div>
                 </div>
