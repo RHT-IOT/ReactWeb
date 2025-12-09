@@ -503,7 +503,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [mapFile, setMapFile] = useState<string>("China.json");
   const [currentRegion, setCurrentRegion] = useState<string>("China");
-  const [mode, setMode] = useState<"map" | "region" | "detail">("map");
+  const [mode, setMode] = useState<"map" | "region" | "detail"|"detail-multi-IMEI">("map");
   const [selectedMeshName, setSelectedMeshName] = useState<string | null>(null);
   const [selectedMeshNames, setSelectedMeshNames] = useState<string[]>([]);
   const [detailModelLoaded, setDetailModelLoaded] = useState<boolean>(false);
@@ -626,6 +626,11 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
       setPanelVisible(true);
     } else if (selectedLabel === "BOCDSS") {
       setCurrentRegion("Macau");
+      setMode("detail");
+      setDetailModelLoaded(false);
+      setPanelVisible(true);
+    }else if (selectedLabel === "屯门区") {
+      setCurrentRegion("TuenMun");
       setMode("detail");
       setDetailModelLoaded(false);
       setPanelVisible(true);
@@ -800,6 +805,13 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   // Check if a mesh name maps to an allowed realtime device option
   const isMeshAllowed = useCallback((name: string | null) => {
     if (!name) return false;
+
+    // Special case for TuenMun / Multi-IMEI
+    if (selectedLabel === "屯门区") {
+      const allowed = ["866597079361000", "863013070187264"];
+      return allowed.includes(name);
+    }
+
     const opts = realtimeDeviceOptions3D;
     if (!opts || opts.length === 0) return false;
     const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -809,7 +821,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
       const on = norm(o);
       return on.includes(meshNorm) || meshNorm.includes(on);
     });
-  }, [realtimeDeviceOptions3D]);
+  }, [realtimeDeviceOptions3D, selectedLabel]);
 
   // When a mesh is clicked, select single or multi depending on Ctrl/Shift keys
   const handleMeshSelected = useCallback((name: string | null) => {
@@ -905,7 +917,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           {/* <directionalLight position={[0, 200, 0]} intensity={1.0} /> */}
           {/* Bottom fill light to brighten underside of the scene */}
           {/* <directionalLight position={[0, -200, 0]} intensity={2.5}/> */}
-           {mode !== "detail" && <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} showPillars={mode === "region"} showMarkers={mode === "map"} onFilteredDevices={setVisibleDevices} />}
+           {(mode !== "detail"&& mode !== "detail-multi-IMEI") && <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} showPillars={mode === "region"} showMarkers={mode === "map"} onFilteredDevices={setVisibleDevices} />}
           {mode === "detail" && selectedLabel === "BOCYH" && (
             <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
               <CMADetail
@@ -928,7 +940,26 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           {mode === "detail" && selectedLabel === "BOCDSS" && (
             <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
               <CMADetail
-                glbName={asset('/3dmodel/CMA+.glb')}
+                glbName={asset('/3dmodel/NCCO.glb')}
+                controlsRef={controlsRef}
+                onMeshSelected={handleMeshSelected}
+                selectedMeshNames={selectedMeshNames}
+                isMeshAllowed={isMeshAllowed}
+                onModelLoaded={() => setDetailModelLoaded(true)}
+                showInlineChart={!panelVisible}
+                chartDeviceMap={deviceMap}
+                chartDeviceTypes={selectedDeviceTypes3D}
+                chartDataTypes={selectedDataTypes3D}
+                chartMaxPoints={maxPoints3D}
+                chartHistoryRef={chartHistoryRef}
+                historyVersion={historyVersion}
+              />
+            </Suspense>
+          )}
+          {mode === "detail" && selectedLabel === "屯门区" && (
+            <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
+              <CMADetail
+                glbName={asset('/3dmodel/NCCO.glb')}
                 controlsRef={controlsRef}
                 onMeshSelected={handleMeshSelected}
                 selectedMeshNames={selectedMeshNames}
@@ -1099,6 +1130,213 @@ function CameraInit({ controlsRef, initial }: { controlsRef: any; initial: { pos
   return null;
 }
 function CMADetail({glbName, controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed, onModelLoaded, showInlineChart = false, chartDeviceMap, chartDeviceTypes, chartDataTypes = [], chartMaxPoints = 10,historyVersion, chartHistoryRef }: { glbName?: string; controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean; onModelLoaded?: () => void; showInlineChart?: boolean; chartDeviceMap?: any; chartDeviceTypes?: string[]; chartDataTypes?: string[]; chartMaxPoints?: number; historyVersion?:number; chartHistoryRef?: React.MutableRefObject<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>> }) {
+  const { camera, size } = useThree();
+  const gltf: any = useGLTF(glbName);
+  const groupRef = useRef<THREE.Group>(null);
+  const [glows, setGlows] = useState<{ name: string; center: [number, number, number]; radius: number }[]>([]);
+  const chartPosRef = useRef<Record<string, [number, number, number]>>({});
+  const [chartPosVersion, setChartPosVersion] = useState(0);
+  const dragRef = useRef<{ key: string; base: [number, number, number]; startX: number; startY: number; pointerId?: number } | null>(null);
+  
+  useEffect(() => {
+    if (!gltf?.scene) return;
+    const box = new THREE.Box3().setFromObject(gltf.scene);
+    const sphere = new THREE.Sphere();
+    box.getBoundingSphere(sphere);
+    const center = sphere.center;
+    controlsRef.current?.target.copy(center);
+    controlsRef.current?.update();
+
+    camera.position.set(center.x, center.y + sphere.radius * 0.6, center.z + sphere.radius * 2.2);
+    camera.near = Math.max(0.1, sphere.radius / 100);
+    camera.far = Math.max(1000, sphere.radius * 100);
+    camera.updateProjectionMatrix();
+    onModelLoaded?.();
+  }, [gltf, controlsRef, camera]);
+
+  // Force all materials' metalness to 0 for non-metallic look
+  useEffect(() => {
+    if (!gltf?.scene) return;
+    try {
+      gltf.scene.traverse((obj: any) => {
+        const mat = (obj as any)?.material;
+        if (!mat) return;
+        if (Array.isArray(mat)) {
+          mat.forEach((m: any) => {
+            if (typeof m.metalness === 'number') { m.metalness = 0.0; m.needsUpdate = true; }
+          });
+        } else if (typeof mat.metalness === 'number') {
+          mat.metalness = 0.0;
+          mat.needsUpdate = true;
+        }
+      });
+    } catch {}
+  }, [gltf]);
+
+  useEffect(() => {
+    const res: { name: string; center: [number, number, number]; radius: number }[] = [];
+    if (!gltf?.scene) { setGlows([]); return; }
+    selectedMeshNames.forEach((n) => {
+      const obj = gltf.scene.getObjectByName?.(n);
+      if (!obj) return;
+      const box = new THREE.Box3().setFromObject(obj);
+      const sphere = new THREE.Sphere();
+      box.getBoundingSphere(sphere);
+      const worldCenter = sphere.center.clone();
+      const localCenter = worldCenter.clone();
+      if (groupRef.current) {
+        groupRef.current.worldToLocal(localCenter);
+      }
+      res.push({ name: n, center: [localCenter.x, localCenter.y, localCenter.z], radius: sphere.radius });
+    });
+    setGlows(res);
+  }, [selectedMeshNames, gltf]);
+
+  return (
+    <group ref={groupRef}>
+      {gltf?.scene && (
+      <primitive
+        object={gltf.scene}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          const obj = e.object as THREE.Object3D;
+          const meshName = (obj as any)?.name || "Unnamed";
+          if (isMeshAllowed && !isMeshAllowed(meshName)) {
+            return;
+          }
+          onMeshSelected?.(meshName);
+        }}
+      />)}
+      {glows.map((g) => (
+        <GlowShell key={g.name} center={g.center} radius={g.radius} />
+      ))}
+      {glows.length > 0 && showInlineChart && chartDeviceMap && chartDeviceTypes && chartDeviceTypes.length > 0 && (() => {
+        const placed: { box: { minX: number; minY: number; maxX: number; maxY: number }; pos: [number, number, number]; dt: string }[] = [];
+        const BOX_W = 200;
+        const BOX_H = 140;
+        const stepX = 24;
+        const stepY = 18;
+        const project = (p: THREE.Vector3) => {
+          const v = p.clone().project(camera);
+          return [(v.x * 0.5 + 0.5) * size.width, (-v.y * 0.5 + 0.5) * size.height] as [number, number];
+        };
+        const worldOffset = (base: THREE.Vector3, dx: number, dy: number) => {
+          const f = new THREE.Vector3();
+          camera.getWorldDirection(f);
+          const u = camera.up.clone().normalize();
+          const r = new THREE.Vector3().crossVectors(f, u).normalize();
+          const p0 = project(base);
+          const pR = project(base.clone().add(r.clone().multiplyScalar(1)));
+          const pU = project(base.clone().add(u.clone().multiplyScalar(1)));
+          const pxPerUnitX = Math.max(1e-3, Math.abs(pR[0] - p0[0]));
+          const pxPerUnitY = Math.max(1e-3, Math.abs(pU[1] - p0[1]));
+          const wx = dx / pxPerUnitX;
+          const wy = dy / pxPerUnitY;
+          return base.clone().add(r.multiplyScalar(wx)).add(u.multiplyScalar(wy));
+        };
+        const overlaps = (a: { minX: number; minY: number; maxX: number; maxY: number }) => {
+          for (const b of placed) {
+            if (!(a.maxX < b.box.minX || a.minX > b.box.maxX || a.maxY < b.box.minY || a.minY > b.box.maxY)) return true;
+          }
+          return false;
+        };
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+        glows.forEach((g) => {
+          const meshNorm = norm(g.name);
+          const dt = chartDeviceTypes.find((d) => {
+            const dn = norm(d);
+            return dn.includes(meshNorm) || meshNorm.includes(dn);
+          }) || chartDeviceTypes[0];
+          const base = new THREE.Vector3(g.center[0], g.center[1] + g.radius * 0.9, g.center[2]);
+          let dx = 0;
+          let dy = 0;
+          let posWorld = base;
+          const override = chartPosRef.current[dt];
+          if (override) {
+            const [sx, sy] = project(new THREE.Vector3(override[0], override[1], override[2]));
+            const box = { minX: sx - BOX_W / 2, minY: sy - BOX_H / 2, maxX: sx + BOX_W / 2, maxY: sy + BOX_H / 2 };
+            placed.push({ box, pos: [override[0], -override[1], override[2]], dt });
+            return;
+          }
+          for (let t = 0; t < 50; t++) {
+            posWorld = worldOffset(base, dx, dy);
+            const [sx, sy] = project(posWorld);
+            const box = { minX: sx - BOX_W / 2, minY: sy - BOX_H / 2, maxX: sx + BOX_W / 2, maxY: sy + BOX_H / 2 };
+            if (!overlaps(box)) { placed.push({ box, pos: [posWorld.x, posWorld.y, posWorld.z], dt }); break; }
+            const k = t + 1;
+            const sign = k % 2 === 0 ? -1 : 1;
+            dx = sign * Math.ceil(k / 2) * stepX;
+            if (k % 4 === 0) dy += stepY;
+          }
+          if (placed.length === 0) {
+            const [sx, sy] = project(posWorld);
+            const box = { minX: sx - BOX_W / 2, minY: sy - BOX_H / 2, maxX: sx + BOX_W / 2, maxY: sy + BOX_H / 2 };
+            placed.push({ box, pos: [posWorld.x, posWorld.y, posWorld.z], dt });
+          }
+        });
+        return placed.map((p, idx) => {
+          const base = new THREE.Vector3(p.pos[0], p.pos[1], p.pos[2]);
+          const handleWorld = worldOffset(base, -BOX_W / 2 - 14, -BOX_H / 2 - 14);
+          const onDown = (e: any) => {
+            e.stopPropagation();
+            if (e.button !== 0) return;
+            try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
+            dragRef.current = { key: p.dt, base: chartPosRef.current[p.dt] || p.pos, startX: e.clientX, startY: e.clientY, pointerId: e.pointerId } as any;
+          };
+          const onMove = (e: any) => {
+            if (!dragRef.current) return;
+            if (e.buttons !== 1) return;
+            if (dragRef.current.pointerId !== undefined && e.pointerId !== dragRef.current.pointerId) return;
+            e.stopPropagation();
+            const d = dragRef.current as any;
+            const dx2 = e.clientX - d.startX;
+            const dy2 = e.clientY - d.startY;
+            const next = worldOffset(new THREE.Vector3(d.base[0], d.base[1], d.base[2]), dx2, dy2);
+            chartPosRef.current[d.key] = [next.x, next.y, next.z];
+            setChartPosVersion(v => v + 1);
+          };
+          const onUp = (e: any) => {
+            e.stopPropagation();
+            try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+            dragRef.current = null;
+          };
+          const onLeave = (e: any) => {
+            if (!dragRef.current) return;
+            try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+            dragRef.current = null;
+          };
+          return (
+            <React.Fragment key={`frag-${idx}`}>
+              <Html center position={p.pos} style={{ pointerEvents: "none", userSelect: "none" }}>
+                <div style={{ transform: "scale(0.6)", transformOrigin: "top center" }}>
+                  <div style={{ width: 450, maxWidth: 450, background: "rgba(0,0,0,0.8)", color: "#fff", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 12, padding: 6, boxShadow: "0 6px 16px rgba(0,0,0,0.4)", fontSize: 14, lineHeight: 1.35 }}>
+                    <div style={{ marginBottom: 6 }}>
+                      <LatestDashboard deviceMap={chartDeviceMap} device={[p.dt]} dataType={chartDataTypes} compact />
+                    </div>
+                    <LatestLineChart
+                      deviceMap={chartDeviceMap}
+                      deviceType={p.dt}
+                      dataType={chartDataTypes}
+                      maxPoints={chartMaxPoints}
+                      title="Realtime Line Chart"
+                      height={120}
+                      historyRef={chartHistoryRef}
+                      version={historyVersion}
+                    />
+                  </div>
+                </div>
+              </Html>
+              <Html center position={[handleWorld.x, handleWorld.y, handleWorld.z]} style={{ pointerEvents: "auto" }}>
+                <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onLeave} style={{ width: 16, height: 16, borderRadius: 8, background: "#66ccff", boxShadow: "0 0 8px rgba(102,204,255,0.8)", cursor: "grab" }} />
+              </Html>
+            </React.Fragment>
+          );
+        });
+      })()}
+    </group>
+  );
+}
+function MultiIMEI({glbName, controlsRef, onMeshSelected, selectedMeshNames = [], isMeshAllowed, onModelLoaded, showInlineChart = false, chartDeviceMap, chartDeviceTypes, chartDataTypes = [], chartMaxPoints = 10,historyVersion, chartHistoryRef }: { glbName?: string; controlsRef: any; onMeshSelected?: (name: string | null) => void; selectedMeshNames?: string[]; isMeshAllowed?: (name: string) => boolean; onModelLoaded?: () => void; showInlineChart?: boolean; chartDeviceMap?: any; chartDeviceTypes?: string[]; chartDataTypes?: string[]; chartMaxPoints?: number; historyVersion?:number; chartHistoryRef?: React.MutableRefObject<Record<string, { timestamps: string[]; seriesMap: Record<string, number[]> }>> }) {
   const { camera, size } = useThree();
   const gltf: any = useGLTF(glbName);
   const groupRef = useRef<THREE.Group>(null);
