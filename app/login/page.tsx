@@ -394,6 +394,15 @@ function LoginApp() {
     });
   };
 
+  // Handle specific OIDC errors by redirecting to login (clearing params)
+  useEffect(() => {
+    if (auth.error && auth.error.message === "No matching state found in storage") {
+      // Redirect to /login to clear query params and reset state
+      const loginPath = asset("/login");
+      window.location.href = loginPath;
+    }
+  }, [auth.error]);
+
   // When IMEIs change, drop selections for removed IMEIs and recompute union
   useEffect(() => {
     setSelectedDevicesByImei(prev => {

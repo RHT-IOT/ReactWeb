@@ -93,7 +93,7 @@ export function createLatestDpPoller({
   callback,
   errorCallback,
 }: {
-  IMEI: string;
+  IMEI: string | string[];
   idToken: string;
   getIdToken?: () => Promise<string>;
   intervalMs?: number;
@@ -106,15 +106,36 @@ export function createLatestDpPoller({
   async function tick() {
     try {
       let result: LatestDPResult;
+      
+      const fetchOne = async (imei: string, tk: string) => getLatestDP(imei, tk);
+
+      const fetchAll = async (tk: string) => {
+        if (Array.isArray(IMEI)) {
+          const list = await Promise.all(IMEI.map(i => fetchOne(i, tk)));
+          const map: Record<string, any> = {};
+          // Merge maps, prefixing keys with IMEI to avoid collisions
+          list.forEach((res, idx) => {
+            const imei = IMEI[idx];
+            if (res && res.deviceMap) {
+              Object.keys(res.deviceMap).forEach(k => {
+                map[`${imei}_${k}`] = res.deviceMap[k];
+              });
+            }
+          });
+          return { deviceMap: map, deviceTypes: {} };
+        }
+        return await fetchOne(IMEI, tk);
+      };
+
       try {
-        result = await getLatestDP(IMEI, currentToken);
+        result = await fetchAll(currentToken);
       } catch (e: any) {
         if ((e?.status === 401 || e?.status === 403) && getIdToken) {
           try {
             const newTk = await getIdToken();
             if (newTk) {
               currentToken = newTk;
-              result = await getLatestDP(IMEI, currentToken);
+              result = await fetchAll(currentToken);
             } else {
               throw e;
             }

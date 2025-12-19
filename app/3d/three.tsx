@@ -546,6 +546,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const [selectedDeviceTypes3D, setSelectedDeviceTypes3D] = useState<string[]>([]);
   // Track whether Ctrl/Shift is pressed to enable multi-select interactions
   const [multiKeyDown, setMultiKeyDown] = useState<boolean>(false);
+  const [multiIMEI, setMultiIMEI] = useState<boolean>(false);
   const [rtDevice3D, setRtDevice3D] = useState<string>("");
   const [updateIntervalMs, setUpdateIntervalMs] = useState<number>(300000);
   const [maxPoints3D, setMaxPoints3D] = useState<number>(10);
@@ -611,32 +612,39 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
       setCurrentRegion("China");
       setMode("map");
       setPanelVisible(true);
+      setMultiIMEI(false);
     } else if (selectedLabel === "Hong Kong") {
       setCurrentRegion("Hong Kong");
       setMode("region");
       setPanelVisible(true);
+      setMultiIMEI(false);
     } else if (selectedLabel === "Macau") {
       setCurrentRegion("Macau");
       setMode("region");
       setPanelVisible(true);
+      setMultiIMEI(false);
     } else if (selectedLabel === "BOCYH") {
       setCurrentRegion("Macau");
       setMode("detail");
       setDetailModelLoaded(false);
       setPanelVisible(true);
+      setMultiIMEI(false);
     } else if (selectedLabel === "BOCDSS") {
       setCurrentRegion("Macau");
       setMode("detail");
       setDetailModelLoaded(false);
       setPanelVisible(true);
+      setMultiIMEI(false);
     }else if (selectedLabel === "屯门区") {
       setCurrentRegion("TuenMun");
       setMode("detail");
       setDetailModelLoaded(false);
       setPanelVisible(true);
+      setMultiIMEI(true);
     } else {
       // keep current region and return to map mode
       setMode("map");
+      setMultiIMEI(false);
     }
   }, [selectedLabel]);
 
@@ -697,13 +705,14 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
 
   // Start latest DP poller when IMEI available
   useEffect(() => {
-    if (!IMEI || !auth?.user?.id_token) return;
+    if ((!multiIMEI && !IMEI) || !auth?.user?.id_token) return;
     if (pollerRef.current) {
       try { pollerRef.current.stop(); } catch {}
       pollerRef.current = null;
     }
+    const targetIMEI = multiIMEI ? ["866597079361000", "863013070187264"] : IMEI;
     const poller = createLatestDpPoller({
-      IMEI,
+      IMEI: targetIMEI,
       idToken: auth.user.id_token,
       getIdToken: getIdTokenAsync,
       intervalMs: updateIntervalMs,
@@ -783,7 +792,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
         pollerRef.current = null;
       }
     };
-  }, [IMEI, auth.user?.id_token, updateIntervalMs]);
+  }, [IMEI, multiIMEI, auth.user?.id_token, updateIntervalMs]);
 
   // Bubble selection to parent if requested
   useEffect(() => {
@@ -792,22 +801,62 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
 
   // Update allowed device types when IMEI changes
   useEffect(() => {
-    setAllowedDeviceTypes3D(allowedByDeviceId[String(IMEI)] || []);
-  }, [IMEI, allowedByDeviceId]);
+    if (multiIMEI) {
+      const allowed = ["866597079361000", "863013070187264"].flatMap(imei => allowedByDeviceId[imei] || []);
+      // In multi-IMEI mode, the keys in deviceMap will be prefixed (e.g. IMEI_Type)
+      // We need to anticipate this or just allow the raw types from allowedByDeviceId?
+      // Actually, createLatestDpPoller creates keys like "IMEI_Type".
+      // But allowedByDeviceId contains raw types like "Type".
+      // We probably should rely on what's in deviceMap for the dropdown in this mode, 
+      // or construct the expected keys.
+      // For now, let's just use the raw types combined with IMEI if we want to be precise, 
+      // but let's see how realtimeDeviceOptions3D works.
+      
+      // realtimeDeviceOptions3D filters deviceMap keys.
+      // deviceMap keys are "IMEI_Type".
+      // allowedDeviceTypes3D usually contains "Type" (from getIMEIList).
+      
+      // If deviceMap has "866..._Controller", and allowedDeviceTypes3D has "Controller".
+      // realtimeDeviceOptions3D:
+      // return allowed?.length ? keys.filter(k => allowed.includes(k)) : keys;
+      
+      // "Controller" does not include "866..._Controller".
+      // So realtimeDeviceOptions3D will be empty if we just put "Controller" in allowedDeviceTypes3D.
+      
+      // We need to put the expected prefixed keys into allowedDeviceTypes3D, OR
+      // adjust realtimeDeviceOptions3D logic.
+      
+      // Adjusting realtimeDeviceOptions3D seems safer/better.
+      setAllowedDeviceTypes3D(allowed); 
+    } else {
+      setAllowedDeviceTypes3D(allowedByDeviceId[String(IMEI)] || []);
+    }
+  }, [IMEI, allowedByDeviceId, multiIMEI]);
 
   // Compute realtime device options filtered by dev_access
   const realtimeDeviceOptions3D = useMemo(() => {
     const keys = deviceMap && typeof deviceMap === "object" ? Object.keys(deviceMap) : [];
     const allowed = Array.isArray(allowedDeviceTypes3D) ? allowedDeviceTypes3D : [];
-    return allowed?.length ? keys.filter(k => allowed.includes(k)) : keys;
-  }, [deviceMap, allowedDeviceTypes3D]);
+    if (!allowed.length) return keys;
+    
+    // If multiIMEI, we might need fuzzy match or prefix match if allowed list doesn't have prefixes
+    if (multiIMEI) {
+        // allowed has ["Controller", ...], keys have ["IMEI_Controller", ...]
+        return keys.filter(k => {
+            // check if k ends with any of the allowed types (preceded by _)
+            return allowed.some(a => k.endsWith(`_${a}`) || k === a);
+        });
+    }
+
+    return keys.filter(k => allowed.includes(k));
+  }, [deviceMap, allowedDeviceTypes3D, multiIMEI]);
 
   // Check if a mesh name maps to an allowed realtime device option
   const isMeshAllowed = useCallback((name: string | null) => {
     if (!name) return false;
 
-    // Special case for TuenMun / Multi-IMEI
-    if (selectedLabel === "屯门区") {
+    // Special case for Multi-IMEI (e.g. TuenMun)
+    if (multiIMEI) {
       const allowed = ["866597079361000", "863013070187264"];
       return allowed.includes(name);
     }
@@ -821,7 +870,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
       const on = norm(o);
       return on.includes(meshNorm) || meshNorm.includes(on);
     });
-  }, [realtimeDeviceOptions3D, selectedLabel]);
+  }, [realtimeDeviceOptions3D, multiIMEI]);
 
   // When a mesh is clicked, select single or multi depending on Ctrl/Shift keys
   const handleMeshSelected = useCallback((name: string | null) => {
@@ -929,7 +978,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
                 onModelLoaded={() => setDetailModelLoaded(true)}
                 showInlineChart={!panelVisible}
                 chartDeviceMap={deviceMap}
-                chartDeviceTypes={selectedDeviceTypes3D}
+                chartDeviceTypes={selectedDeviceTypes3D.length > 0 ? selectedDeviceTypes3D : Object.keys(deviceMap)}
                 chartDataTypes={selectedDataTypes3D}
                 chartMaxPoints={maxPoints3D}
                 chartHistoryRef={chartHistoryRef}
@@ -958,7 +1007,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           )}
           {mode === "detail" && selectedLabel === "屯门区" && (
             <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
-              <CMADetail
+              <MultiIMEI
                 glbName={asset('/3dmodel/NCCO.glb')}
                 controlsRef={controlsRef}
                 onMeshSelected={handleMeshSelected}

@@ -126,8 +126,12 @@ export default function AdminPage() {
   useEffect(() => { loadIMEIs(); }, [auth.isAuthenticated, auth.user?.id_token, auth.user?.profile?.email]);
 
   useEffect(() => {
-    if (!selectedDeviceType && deviceTypes.length > 0) {
-      setSelectedDeviceType(deviceTypes[0]);
+    if (deviceTypes.length > 0) {
+      if (!selectedDeviceType || !deviceTypes.includes(selectedDeviceType)) {
+        setSelectedDeviceType(deviceTypes[0]);
+      }
+    } else if (selectedDeviceType) {
+      setSelectedDeviceType("");
     }
   }, [deviceTypes, selectedDeviceType]);
 
@@ -221,7 +225,7 @@ export default function AdminPage() {
       <div className="panel" style={{ marginTop: 16 }}>
         <div className="section-title">Select IMEI</div>
         <div className="control-row" style={{ gap: 8 }}>
-          <select className="brand-select" value={selectedIMEI} onChange={(e) => { const v = e.target.value; setSelectedIMEI(v); fetchCPNames(v); }}>
+          <select className="brand-select" value={selectedIMEI} onChange={(e) => { const v = e.target.value; setSelectedIMEI(v); setSelectedDeviceType(""); fetchCPNames(v); }}>
             {imeiArr.map((d: any, idx: number) => (
               <option key={idx} value={String(d.DeviceID)}>{d.Location || String(d.DeviceID)}</option>
             ))}
