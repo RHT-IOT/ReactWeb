@@ -641,11 +641,30 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
       setDetailModelLoaded(false);
       setPanelVisible(true);
       setMultiIMEI(true);
+    }else if (selectedLabel === "广东省") {
+      setCurrentRegion("GuangDong");
+      setMode("region");
+      setDetailModelLoaded(false);
+      setPanelVisible(true);
+      setMultiIMEI(true);
+    }else if (selectedLabel === "广州市") {
+      setCurrentRegion("GuangZhou");
+      setMode("region");
+      setDetailModelLoaded(false);
+      setPanelVisible(true);
+      setMultiIMEI(true);
+    }else if (selectedLabel === "南沙区") {
+      setCurrentRegion("Spray");
+      setMode("detail");
+      setDetailModelLoaded(false);
+      setPanelVisible(true);
+      setMultiIMEI(true);
     } else {
       // keep current region and return to map mode
-      setMode("map");
+      setMode("region");
       setMultiIMEI(false);
     }
+    console.log(selectedLabel);
   }, [selectedLabel]);
 
   // Swap map JSON when the region changes (guard to prevent re-render loop)
@@ -653,6 +672,8 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     const next =
       currentRegion === "Hong Kong" ? "HongKong.json" :
       currentRegion === "Macau" ? "Macau.json" :
+      currentRegion === "GuangZhou" ? "GuangZhouProvince.json" :
+      currentRegion === "GuangDong" ? "GuangDong.json" :
       "China.json";
     if (mapFile !== next) {
       setMapFile(next);
@@ -989,7 +1010,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           {mode === "detail" && selectedLabel === "BOCDSS" && (
             <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
               <CMADetail
-                glbName={asset('/3dmodel/NCCO.glb')}
+                glbName={asset('/3dmodel/CMA+.glb')}
                 controlsRef={controlsRef}
                 onMeshSelected={handleMeshSelected}
                 selectedMeshNames={selectedMeshNames}
@@ -1009,6 +1030,24 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
             <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
               <MultiIMEI
                 glbName={asset('/3dmodel/NCCO.glb')}
+                controlsRef={controlsRef}
+                onMeshSelected={handleMeshSelected}
+                selectedMeshNames={selectedMeshNames}
+                isMeshAllowed={isMeshAllowed}
+                onModelLoaded={() => setDetailModelLoaded(true)}
+                showInlineChart={!panelVisible}
+                chartDeviceMap={deviceMap}
+                chartDeviceTypes={selectedDeviceTypes3D}
+                chartDataTypes={selectedDataTypes3D}
+                chartMaxPoints={maxPoints3D}
+                chartHistoryRef={chartHistoryRef}
+                historyVersion={historyVersion}
+              />
+            </Suspense>
+          )}{mode === "detail" && selectedLabel === "南沙区" && (
+            <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
+              <MultiIMEI
+                glbName={asset('/3dmodel/spray.glb')}
                 controlsRef={controlsRef}
                 onMeshSelected={handleMeshSelected}
                 selectedMeshNames={selectedMeshNames}
