@@ -503,7 +503,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [mapFile, setMapFile] = useState<string>("China.json");
   const [currentRegion, setCurrentRegion] = useState<string>("China");
-  const [mode, setMode] = useState<"map" | "region" | "detail"|"detail-multi-IMEI">("map");
+  const [mode, setMode] = useState<"map" | "region" | "detail">("map");
   const [selectedMeshName, setSelectedMeshName] = useState<string | null>(null);
   const [selectedMeshNames, setSelectedMeshNames] = useState<string[]>([]);
   const [detailModelLoaded, setDetailModelLoaded] = useState<boolean>(false);
@@ -987,7 +987,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           {/* <directionalLight position={[0, 200, 0]} intensity={1.0} /> */}
           {/* Bottom fill light to brighten underside of the scene */}
           {/* <directionalLight position={[0, -200, 0]} intensity={2.5}/> */}
-           {(mode !== "detail"&& mode !== "detail-multi-IMEI") && <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} showPillars={mode === "region"} showMarkers={mode === "map"} onFilteredDevices={setVisibleDevices} />}
+           {mode !== "detail" && <MapScene geojson={geojson} controlsRef={controlsRef} onSelectName={setSelectedLabel} selectedName={selectedLabel} region={currentRegion} devices={imeiList} onSelectIMEI={setIMEI} showPillars={mode === "region"} showMarkers={mode === "map"} onFilteredDevices={setVisibleDevices} />}
           {mode === "detail" && selectedLabel === "BOCYH" && (
             <Suspense fallback={<Html center><div className="r3d-loader" /><div style={{ marginTop: 8, color: "#fff" }}>Loading model…</div></Html>}>
               <CMADetail

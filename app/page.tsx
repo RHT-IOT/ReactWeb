@@ -75,11 +75,11 @@ function App() {
           <span className="brand-title">{brandTitle}</span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <select value={theme} onChange={handleThemeChange} className="brand-select">
+          {/* <select value={theme} onChange={handleThemeChange} className="brand-select">
             <option value="theme-a">Theme A</option>
             <option value="theme-b">Theme B</option>
             <option value="theme-c">Theme C</option>
-          </select>
+          </select> */}
           <select value={mode} onChange={handleModeChange} className="brand-select">
             <option value="mode-light">Light</option>
             <option value="mode-dark">Dark</option>
