@@ -1,15 +1,16 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef ,useMemo} from "react";
 import { useAuth } from "react-oidc-context";
 import Form from 'react-bootstrap/Form';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, TimeSeriesScale, ArcElement, ChartOptions } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { asset } from "../lib/asset";
 import { LatestDashboard } from "../components/DashboardGauges";
-import { getIMEIList, getLatestDP, getDPFromTime } from "../lib/aws";
+import { getIMEIList, getLatestDP, getDPFromTime, getIMEIOffline } from "../lib/aws";
 import 'chartjs-adapter-date-fns';
 import DateTimeRangePickerValue from "../datepicker";
 import dayjs from "dayjs";
+import { DeviceMonitor } from "../components/device-monitor";
 
 import Image from 'next/image';
 import { getOidcConfig, buildLogoutUrl } from "../authConfig";
@@ -18,6 +19,8 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 // Center text plugin is provided by shared DashboardGauges; local plugin removed.
 
 function SelectIMEIMulti({ IMEI, setValues, setcurrdev, setdevarr }) {
+  
+          console.log(IMEI);
   const handleMultiSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
     setValues(selected);
@@ -229,7 +232,7 @@ function LoginApp() {
   const [theme, setTheme] = useState<'theme-a' | 'theme-b' | 'theme-c'>('theme-b');
   const [logoSrc, setLogoSrc] = useState(asset('/logos/logo1.png'));
   const [mode, setMode] = useState<'mode-light' | 'mode-dark'>('mode-light');
-  const [activeTab, setActiveTab] = useState<'latest' | 'history' | '3d' | 'control'>('latest');
+  const [activeTab, setActiveTab] = useState<'latest' | 'history' | '3d' | 'control'| 'monitor'>('latest');
   // Dynamic brand title per theme
   const brandTitle = theme === 'theme-a' ? 'RHT Limited' : theme === 'theme-b' ? 'CMA testing' : 'Natsense';
 
@@ -379,10 +382,62 @@ function LoginApp() {
 
   // Auto-fetch latest devices/data types when IMEIs change on History tab
   useEffect(() => {
-    if (activeTab !== 'history') return;
+    if (activeTab !== 'history' && activeTab !== 'monitor') return;
     if (!IMEIs || IMEIs.length === 0) return;
     getLatestDp();
   }, [IMEIs, activeTab]);
+
+  // Auto-refresh every 5 minutes when on Monitor tab
+  useEffect(() => {
+    if (activeTab !== 'monitor') return;
+    // initial fetch
+    updateMonitorIMEIStatus();
+    const interval = setInterval(() => {
+      updateMonitorIMEIStatus();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [activeTab, IMEI_ARR, auth.user?.id_token]);
+
+  // IMEI online/offline monitor state
+  const [monitorIMEIs, setMonitorIMEIs] = useState<Record<string, number>[]>([]);
+
+  // Fetch latest DP for all IMEIs and compute per-IMEI online status
+  const updateMonitorIMEIStatus = async () => {
+    try {
+      if (!auth.user?.id_token) return;
+
+      const getIdToken = async () => {
+        try {
+          const fn: any = (auth as any)?.signinSilent;
+          if (typeof fn === 'function') {
+            const user = await fn();
+            const tk = (user as any)?.id_token;
+            if (tk) return tk;
+          }
+        } catch {}
+        return auth.user!.id_token as string;
+      };
+
+      const email = auth.user?.profile?.email || "";
+      const results = await getIMEIOffline(email, auth.user!.id_token as string, getIdToken);
+      
+      const items = Array.isArray(results?.items) ? results.items : [];
+      const offline = Array.isArray(results?.offline) ? results.offline : [];
+      
+      const statuses: Record<string, number>[] = items.map((item: any, idx: number) => {
+        const imei = String(item?.DeviceID ?? '');
+        const label = item?.Location ? `${item.Location} (${imei})` : imei;
+        // API returns true for offline, so false means online (1)
+        const isOffline = offline[idx] === true;
+        return { [label]: isOffline ? 0 : 1 };
+      });
+
+      setMonitorIMEIs(statuses);
+      setLastRefresh(dayjs().format('YYYY-MM-DD HH:mm:ss'));
+    } catch (err) {
+      console.error("updateMonitorIMEIStatus error:", err);
+    }
+  };
 
   // Maintain per-IMEI device selections and compute union into `device`
   const handleDevicesForImei = (imei: string, values: string[]) => {
@@ -597,6 +652,10 @@ function LoginApp() {
           <Image src={asset('/ControlPanel.png')} alt="Control" width={36} height={36}/>
           <span className="nav-label">Control Panel</span>
         </a>
+        <button className={`brand-button ${activeTab === 'monitor' ? 'is-active' : ''}`} onClick={() => setActiveTab('monitor')}>
+          <Image src={asset('/chart.png')} alt="Monitor" width={36} height={36}/>
+          <span className="nav-label">Monitor</span>
+        </button>
       </nav>
 
       <div className="content-shell">
@@ -729,6 +788,14 @@ function LoginApp() {
                   </div>
                 </div>
               </div>
+            </>
+          )}
+          {activeTab === 'monitor' && (
+            <>
+                <div className="panel">
+                <div className="section-title">Monitor Chart</div>
+                   <DeviceMonitor devices={monitorIMEIs} />
+                </div>
             </>
           )}
       </div>

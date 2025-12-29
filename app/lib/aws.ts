@@ -71,6 +71,16 @@ export async function getLatestDP(IMEI: string, idToken: string, getIdToken?: ()
   return { deviceMap: map, deviceTypes: dev };
 }
 
+export async function getIMEIOffline(email: string, idToken: string, getIdToken?: () => Promise<string>): Promise<any> {
+  const res = await fetchWithAuthRetry("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getIMEIOffline", { email }, idToken, getIdToken);
+  const data = await res.json();
+  try {
+    return JSON.parse(data.body ?? "{}");
+  } catch {
+    return data;
+  }
+}
+
 export async function getDPFromTime(
   IMEI: string,
   startDateTime: string,
@@ -167,3 +177,5 @@ export function createLatestDpPoller({
     },
   };
 }
+
+
