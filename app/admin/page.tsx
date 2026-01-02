@@ -2,6 +2,7 @@
 
 import { useAuth } from "react-oidc-context";
 import { useEffect, useState,useId } from "react";
+import { asset } from "../lib/asset";
 
 // Cast to any to extend BigInt prototype for JSON serialization
 (BigInt.prototype as any).toJSON = function() {
@@ -350,7 +351,7 @@ export default function AdminPage() {
         <button
           className="brand-button button-outline"
           style={{ marginLeft: "auto" }}   // 👈 pushes button to the right
-          onClick={() => window.location.replace("/login")}
+          onClick={() => window.location.replace(asset("/login"))}
         >
           Back to Dashboard
         </button>
