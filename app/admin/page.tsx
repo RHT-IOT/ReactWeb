@@ -86,7 +86,7 @@ function AccessManager({ data, onSave }) {
                   className="brand-button button-outline"
                   style={{ padding: "2px 6px", fontSize: 12 }}
                   onClick={() => selectAllForLocation(user, loc, DevList[idx] || [])}
-                  disabled={(DevList[idx] || []).length === 0}
+                  disabled={false}
                 >
                   Select All
                 </button>
