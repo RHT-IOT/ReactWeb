@@ -4,6 +4,7 @@ import { useAuth } from "react-oidc-context";
 import { useEffect, useMemo, useState } from "react";
 import { getIMEIList, getLatestDP } from "../lib/aws";
 
+import { asset } from "../lib/asset";
 export default function AdminPage() {
   const auth = useAuth();
   // Apply saved theme and mode so background matches other pages
@@ -217,7 +218,7 @@ export default function AdminPage() {
     <div className="page-container" style={{ paddingTop: 24 }}>
       <div className="brand-header" style={{ display: "flex", alignItems: "center", padding: "8px 12px" }}>
         <span className="brand-title">Control Panel</span>
-        <button className="brand-button button-outline" style={{ marginLeft: "auto" }} onClick={() => window.location.replace("/login")}>
+        <button className="brand-button button-outline" style={{ marginLeft: "auto" }} onClick={() => window.location.replace(asset('/login'))}>
           Back to Dashboard
         </button>
       </div>
