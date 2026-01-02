@@ -12,12 +12,20 @@ function AccessManager({ data, onSave }) {
   if (!data) {
     return <div>Loading…</div>;
   }
-  const { email, Location, DevList } = data;
+  const { email, Location, DevList, CurrDevAccess } = data;
 
   // State: which email has which selections
   const [access, setAccess] = useState(
-    email.reduce((acc, e) => {
+    email.reduce((acc, e, idx) => {
       acc[e] = {}; // each email has a map of location -> selected devices
+      if (CurrDevAccess && CurrDevAccess[idx]) {
+        const userAccess = CurrDevAccess[idx];
+        if (userAccess.Location && userAccess.DevList) {
+          userAccess.Location.forEach((loc, locIdx) => {
+            acc[e][loc] = userAccess.DevList[locIdx] || [];
+          });
+        }
+      }
       return acc;
     }, {})
   );
@@ -82,7 +90,14 @@ function AccessManager({ data, onSave }) {
           {Location.map((loc, idx) => (
             <div key={loc} style={{ marginBottom: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <strong>{loc}</strong>
+                <span
+                  style={{
+                    fontWeight: access[user][loc] !== undefined ? "bold" : "normal",
+                    textDecoration: access[user][loc] !== undefined ? "underline" : "none",
+                  }}
+                >
+                  {loc}
+                </span>
                 <button
                   className="brand-button button-outline"
                   style={{ padding: "2px 6px", fontSize: 12 }}
