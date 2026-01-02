@@ -288,6 +288,8 @@ export default function AdminPage() {
         // Skip empty rights: clearing deletes the association, don't include empties
         if (rights.length > 0) {
           payload.push({ email: user, Location: loc, DeviceRight: rights });
+        }else{
+          payload.push({ email: user, Location: loc });
         }
       }
     }
