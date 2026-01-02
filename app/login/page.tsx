@@ -673,14 +673,14 @@ function LoginApp() {
             <>
               <div className="grid-2" style={{ alignItems: 'start' }}>
                 <div className="panel">
-                  <div className="section-title">Filters</div>
-                  <p>IMEIs:</p>
+                  <div className="section-title">Selection</div>
+                  <p>Locations</p>
                   <div className="control-row">
                     <SelectIMEIMulti IMEI={IMEI_ARR} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
                   </div>
                   {IMEIs && IMEIs.length > 0 && (
                     <>
-                      <p>Devices per IMEI:</p>
+                      <p>Devices in Location:</p>
                       {IMEIs.map((id) => {
                         const allowed = allowedByDeviceId[String(id)] || [];
                         const label = (() => {
@@ -725,14 +725,14 @@ function LoginApp() {
             <>
               <div className="grid-2" style={{ alignItems: 'start' }}>
                 <div className="panel">
-                  <div className="section-title">Filters</div>
-                  <p>IMEIs:</p>
+                  <div className="section-title">Filter</div>
+                  <p>Locations</p>
                   <div className="control-row">
                     <SelectIMEIMulti IMEI={IMEI_ARR} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
                   </div>
                   {IMEIs && IMEIs.length > 0 && (
                     <>
-                      <p>Devices per IMEI:</p>
+                      <p>Devices in Location:</p>
                       {IMEIs.map((id) => {
                         const allowed = allowedByDeviceId[String(id)] || [];
                         const label = (() => {
