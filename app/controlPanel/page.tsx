@@ -3,6 +3,7 @@
 import { useAuth } from "react-oidc-context";
 import { useEffect, useMemo, useState } from "react";
 import { getIMEIList, getLatestDP } from "../lib/aws";
+import { AirConPanel } from "./AirConPanel";
 
 import { asset } from "../lib/asset";
 export default function AdminPage() {
@@ -26,6 +27,9 @@ export default function AdminPage() {
   const [latestMap, setLatestMap] = useState<Record<string, any>>({});
   const [isSendingAll, setIsSendingAll] = useState<boolean>(false);
 
+  // Whether selected IMEI supports AirCon device type
+  
+
   const deviceTypes = useMemo(() => {
     const allowed = allowedByDeviceId[String(selectedIMEI)] || [];
     if (allowed.length > 0) return allowed;
@@ -36,7 +40,9 @@ export default function AdminPage() {
     )) as string[];
     return types;
   }, [allowedByDeviceId, selectedIMEI, cpNames]);
-
+const hasAirCon = useMemo(() => {
+    return deviceTypes.some((dt) => dt?.toLowerCase() === "aircon");
+  }, [deviceTypes]);
   const dataTypes = useMemo(() => {
     if (!selectedDeviceType) return [] as string[];
     return cpNames
@@ -140,12 +146,23 @@ export default function AdminPage() {
     setNameInputs(prev => ({ ...prev, [name]: value }));
   }
 
-  async function sendCpValue(deviceType: string, dataType: string | string[]) {
+  async function sendCpValue(
+    deviceType: string,
+    dataType: string | string[],
+    valueOverride?: string | Record<string, string>
+  ) {
     if (!auth?.user?.id_token || !selectedIMEI) return;
     const types = Array.isArray(dataType) ? dataType : [dataType];
     const send_arr: [string, string][] = types.map((dt) => {
       const key = `${deviceType}/${String(dt)}`;
-      const value = nameInputs[key] ?? "";
+      let value: string = "";
+      if (typeof valueOverride === "string") {
+        value = valueOverride;
+      } else if (valueOverride && typeof valueOverride === "object") {
+        value = valueOverride[key] ?? "";
+      } else {
+        value = nameInputs[key] ?? "";
+      }
       return [key, value];
     });
     try {
@@ -180,6 +197,41 @@ export default function AdminPage() {
     }
     // Fallback throw if we somehow get here
     throw lastErr ?? new Error("authFetchRetry failed");
+  }
+
+  // Helper to send AirCon IR command using existing sendCpValue
+  function deriveAirconIrValue(action: string): string {
+    // Separate handling for two IMEI cases; adjust strings if backend expects specific IR payloads
+    if (selectedIMEI === "866597079355002") {//office
+      // Case A mapping (currently mirroring generic action; customize as needed)
+       if(action === "POWER_ON") return "1";
+      if(action === "POWER_OFF") return "1";
+      if(action === "TEMP_24") return "3";
+      if(action === "TEMP_26") return "2";
+    }
+    if (selectedIMEI === "861556077809126") {//lab7
+      // Case B mapping (currently mirroring generic action; customize as needed)
+      if(action === "POWER_ON") return "2";
+      if(action === "POWER_OFF") return "1";
+      if(action === "TEMP_24") return "4";
+      if(action === "TEMP_26") return "3";
+    }
+    // Default mapping
+    if(action === "POWER_ON") return "1";
+    if(action === "POWER_OFF") return "2";
+      if(action === "TEMP_24") return "3";
+      if(action === "TEMP_26") return "4";
+    return "20";
+  }
+
+  async function sendAirconIR(action: string) {
+    if (!auth?.user?.id_token || !selectedIMEI) return;
+    // Find the canonical AirCon device type string (case-sensitive as provided)
+    const airconDeviceType = deviceTypes.find((dt) => dt?.toLowerCase() === "aircon");
+    if (!airconDeviceType) return;
+    const irValue = deriveAirconIrValue(action);
+    // Send directly with override to avoid stale state reads
+    await sendCpValue(airconDeviceType, "Send_IR", irValue);
   }
 
   // Prefill inputs from latest DP for the selected device without overriding user-entered values
@@ -245,6 +297,26 @@ export default function AdminPage() {
           </select>
         </div>
       </div>
+
+      {/* Air Conditioner Control Panel (conditionally shown if IMEI supports aircon) */}
+      {hasAirCon && (
+        <div className="panel" style={{ marginTop: 16 }}>
+          <div className="section-title">Air Conditioner Control</div>
+          <div className="control-row" style={{ gap: 16 }}>
+            {/* Show case label for the two specific IMEIs */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, opacity: 0.7 }}>
+                {selectedIMEI === "866597079355002" ? "Case A" : selectedIMEI === "861556077809126" ? "Case B" : "Generic"}
+              </span>
+            </div>
+            <AirConPanel
+              onPowerToggle={(isOn) => sendAirconIR(!isOn ? "POWER_ON" : "POWER_OFF")}
+              onLowTempClick={() => sendAirconIR("TEMP_24")}
+              onHighTempClick={() => sendAirconIR("TEMP_26")}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="panel" style={{ marginTop: 16 }}>
         <div className="section-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
