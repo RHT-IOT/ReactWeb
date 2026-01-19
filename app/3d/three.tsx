@@ -8,7 +8,7 @@ import * as d3 from "d3-geo";
 import { useAuth } from "react-oidc-context";
 import { LatestDashboard } from "../components/DashboardGauges";
 import LatestLineChart from "../components/LatestLineChart";
-import { getIMEIList, createLatestDpPoller, DeviceInfo } from "../lib/aws";
+import { getIMEIList, createLatestDpPoller, DeviceInfo, fetchWithAuthRetry } from "../lib/aws";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { point as turfPoint } from "@turf/helpers";
 
@@ -731,13 +731,8 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
       try { pollerRef.current.stop(); } catch {}
       pollerRef.current = null;
     }
-    const targetIMEI = multiIMEI ? ["866597079361000", "863013070187264"] : IMEI;
-    const poller = createLatestDpPoller({
-      IMEI: targetIMEI,
-      idToken: auth.user.id_token,
-      getIdToken: getIdTokenAsync,
-      intervalMs: updateIntervalMs,
-      callback: (result) => {
+
+    const handleResult = (result: { deviceMap: Record<string, any> }) => {
         // Append a uniform timestamp for all device types, then update deviceMap
         const store = chartHistoryRef.current;
         const meta = new Set(["Timestamp", "DeviceID", "DeviceType"]);
@@ -776,8 +771,9 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
         } catch {}
         setHistoryVersion(v => v + 1);
         setDeviceMap(result.deviceMap);
-      },
-      errorCallback: (_err) => {
+    };
+
+    const handleError = (_err: any) => {
         // On error, still append a tick with carry-forward values for all known device types
         const store = chartHistoryRef.current;
         const nowMs = Date.now();
@@ -803,17 +799,66 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
           }
         } catch {}
         setHistoryVersion(v => v + 1);
-      },
-    });
-    pollerRef.current = poller;
-    poller.start();
+    };
+
+    if (currentRegion === "Spray") {
+        let timer: any = null;
+        let currentToken = auth.user.id_token;
+        const tick = async () => {
+             try {
+                 const res = await fetchWithAuthRetry(
+                     "https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/NS_get_avg",
+                     {}, 
+                     currentToken, 
+                     getIdTokenAsync
+                 );
+                 const data = await res.json();
+                 let parsed = data;
+                 if (data.body && typeof data.body === 'string') {
+                     try { parsed = JSON.parse(data.body); } catch {}
+                 }
+                 if (Array.isArray(parsed)) {
+                    const map: Record<string, any> = {};
+                    parsed.forEach((p: any) => {
+                        const key = p.DeviceType || p.name || p.id || p.DeviceID;
+                        if (key) map[String(key)] = p;
+                    });
+                    if (Object.keys(map).length > 0) parsed = map;
+                 }
+                 handleResult({ deviceMap: parsed });
+             } catch (e) {
+                 handleError(e);
+             }
+        };
+        
+        tick();
+        timer = window.setInterval(tick, updateIntervalMs);
+        
+        pollerRef.current = {
+            stop: () => { if (timer) window.clearInterval(timer); },
+            start: () => {}
+        } as any;
+        
+    } else {
+        const targetIMEI = multiIMEI ? ["866597079361000", "863013070187264"] : IMEI;
+        const poller = createLatestDpPoller({
+          IMEI: targetIMEI,
+          idToken: auth.user.id_token,
+          getIdToken: getIdTokenAsync,
+          intervalMs: updateIntervalMs,
+          callback: handleResult,
+          errorCallback: handleError,
+        });
+        pollerRef.current = poller;
+        poller.start();
+    }
     return () => {
       if (pollerRef.current) {
         try { pollerRef.current.stop(); } catch {}
         pollerRef.current = null;
       }
     };
-  }, [IMEI, multiIMEI, auth.user?.id_token, updateIntervalMs]);
+  }, [IMEI, multiIMEI, auth.user?.id_token, updateIntervalMs, currentRegion]);
 
   // Bubble selection to parent if requested
   useEffect(() => {
@@ -822,7 +867,9 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
 
   // Update allowed device types when IMEI changes
   useEffect(() => {
-    if (multiIMEI) {
+    if (currentRegion === "Spray") {
+        setAllowedDeviceTypes3D(['East', 'West', 'South', 'North', 'Inlet1', 'Inlet2', 'Inlet3', 'Inlet4','Weather','Elec_Meter']);
+    } else if (multiIMEI) {
       const allowed = ["866597079361000", "863013070187264"].flatMap(imei => allowedByDeviceId[imei] || []);
       // In multi-IMEI mode, the keys in deviceMap will be prefixed (e.g. IMEI_Type)
       // We need to anticipate this or just allow the raw types from allowedByDeviceId?
@@ -852,7 +899,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
     } else {
       setAllowedDeviceTypes3D(allowedByDeviceId[String(IMEI)] || []);
     }
-  }, [IMEI, allowedByDeviceId, multiIMEI]);
+  }, [IMEI, allowedByDeviceId, multiIMEI, currentRegion]);
 
   // Compute realtime device options filtered by dev_access
   const realtimeDeviceOptions3D = useMemo(() => {
@@ -876,6 +923,11 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
   const isMeshAllowed = useCallback((name: string | null) => {
     if (!name) return false;
 
+    if (currentRegion === "Spray") {
+         const allowed = ['East', 'West', 'South', 'North', 'Inlet1', 'Inlet2', 'Inlet3', 'Inlet4','Weather','Elec_Meter'];
+         return allowed.includes(name);
+    }
+
     // Special case for Multi-IMEI (e.g. TuenMun)
     if (multiIMEI) {
       const allowed = ["866597079361000", "863013070187264"];
@@ -891,7 +943,7 @@ export default function Map3DComponent({ onMeshSelected }: { onMeshSelected?: (n
       const on = norm(o);
       return on.includes(meshNorm) || meshNorm.includes(on);
     });
-  }, [realtimeDeviceOptions3D, multiIMEI]);
+  }, [realtimeDeviceOptions3D, multiIMEI, currentRegion]);
 
   // When a mesh is clicked, select single or multi depending on Ctrl/Shift keys
   const handleMeshSelected = useCallback((name: string | null) => {
@@ -1485,6 +1537,8 @@ function MultiIMEI({glbName, controlsRef, onMeshSelected, selectedMeshNames = []
       res.push({ name: n, center: [localCenter.x, localCenter.y, localCenter.z], radius: sphere.radius });
     });
     setGlows(res);
+    
+    console.log("Selected mesh:", isMeshAllowed);
   }, [selectedMeshNames, gltf]);
 
   return (

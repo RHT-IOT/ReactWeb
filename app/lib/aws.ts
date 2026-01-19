@@ -14,7 +14,7 @@ export type DeviceInfo = {
 
 export type IMEIListResult = { items: DeviceInfo[]; dev_access: string[][] };
 
-async function fetchWithAuthRetry(url: string, initBody: any, idToken: string, getIdToken?: () => Promise<string>, method: string = "POST") {
+export async function fetchWithAuthRetry(url: string, initBody: any, idToken: string, getIdToken?: () => Promise<string>, method: string = "POST") {
   const make = async (tk: string) =>
     fetch(url, {
       method,
@@ -177,5 +177,6 @@ export function createLatestDpPoller({
     },
   };
 }
+
 
 
