@@ -303,7 +303,7 @@ export default function AdminPage() {
   // Microsoft OAuth config (customized)
   const MS_TENANT = "6cb89794-7b66-472d-b0b1-09ed68dafe30";
   const MS_CLIENT_ID = "231cd4ed-db1c-413d-ab9c-643a61712ee8";
-  const MS_REDIRECT_URI = "http://localhost:3000";
+  const MS_REDIRECT_URI = "https://rht-iot.github.io/ReactWeb/admin";
   const MS_SCOPE = "User.Read Files.ReadWrite";
   const MS_STATE = "12345";
 
