@@ -295,7 +295,7 @@ export default function AdminPage() {
   const MS_TENANT = "6cb89794-7b66-472d-b0b1-09ed68dafe30";
   const MS_CLIENT_ID = "e2f751a9-87fe-4a89-982d-d73b8b8c2f19";
   const MS_REDIRECT_URI = "https://rht-iot.github.io/ReactWeb/admin";
-  const MS_SCOPE = "Files.ReadWrite offline_access";
+  const MS_SCOPE = "Files.ReadWrite.All offline_access";
   const MS_STATE = "12345";
 
   const initializePkcePair = useCallback(async (reuseExisting = true) => {
