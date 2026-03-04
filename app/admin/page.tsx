@@ -299,6 +299,16 @@ export default function AdminPage() {
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [driveFilesError, setDriveFilesError] = useState("");
   const [isMsalBusy, setIsMsalBusy] = useState(false);
+  const fetchDriveFilesFromGraph = useCallback(async (accessToken: string) => {
+    const graphResponse = await fetch("https://graph.microsoft.com/v1.0/me/drive/root/children", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const graphJson = await graphResponse.json();
+    if (!graphResponse.ok) {
+      throw new Error(graphJson?.error?.message || "Graph request failed");
+    }
+    setDriveFiles(graphJson.value || []);
+  }, []);
 
   // Microsoft OAuth config (customized)
   const MS_TENANT = "6cb89794-7b66-472d-b0b1-09ed68dafe30";
@@ -333,6 +343,40 @@ export default function AdminPage() {
   useEffect(() => {
     initializePkcePair();
   }, [initializePkcePair]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const bootstrapMsalRedirect = async () => {
+      try {
+        await initializeMsal();
+        const redirectResult = await msalInstance.handleRedirectPromise();
+        if (cancelled) {
+          return;
+        }
+        if (redirectResult?.account) {
+          msalInstance.setActiveAccount?.(redirectResult.account);
+          setTokenExchangeResult(redirectResult);
+          if (redirectResult.accessToken) {
+            await fetchDriveFilesFromGraph(redirectResult.accessToken);
+          }
+        } else {
+          const existingAccounts = msalInstance.getAllAccounts();
+          if (existingAccounts.length) {
+            msalInstance.setActiveAccount?.(existingAccounts[0]);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("MSAL redirect handling failed:", error);
+          setDriveFilesError("Microsoft sign-in redirect failed.");
+        }
+      }
+    };
+    bootstrapMsalRedirect();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchDriveFilesFromGraph, initializeMsal]);
 
   const refresh_send = {
     Records: [{ eventName: "REFRESH" }]
@@ -494,33 +538,32 @@ export default function AdminPage() {
   const [firstName, setFirstName] = useState('');
 
   const handleMicrosoftSignIn = useCallback(async () => {
-    if (isMsalBusy) return; // avoid overlapping popups
+    if (isMsalBusy) return;
     setIsMsalBusy(true);
     setDriveFilesError("");
     setIsLoadingFiles(true);
 
+    const resetBusyState = () => {
+      setIsLoadingFiles(false);
+      setIsMsalBusy(false);
+    };
+
     try {
       await initializeMsal();
 
-      const accounts = msalInstance.getAllAccounts();
-      let activeAccount = accounts[0] || msalInstance.getActiveAccount();
+      let activeAccount = msalInstance.getActiveAccount();
+      if (!activeAccount) {
+        const accounts = msalInstance.getAllAccounts();
+        activeAccount = accounts[0];
+      }
 
       if (!activeAccount) {
-        try {
-          const loginResponse = await msalInstance.loginPopup(loginRequest);
-          activeAccount = loginResponse.account;
-        } catch (err) {
-          if ((err as any)?.errorCode === "interaction_in_progress") {
-            setDriveFilesError("Finish or close the previous Microsoft sign-in popup, then try again.");
-            return;
-          }
-          throw err;
-        }
+        resetBusyState();
+        await msalInstance.loginRedirect(loginRequest);
+        return;
       }
 
-      if (activeAccount && msalInstance.setActiveAccount) {
-        msalInstance.setActiveAccount(activeAccount);
-      }
+      msalInstance.setActiveAccount?.(activeAccount);
 
       let tokenResponse;
       try {
@@ -530,39 +573,23 @@ export default function AdminPage() {
         });
       } catch (err) {
         if (err instanceof InteractionRequiredAuthError) {
-          try {
-            tokenResponse = await msalInstance.acquireTokenPopup({ ...loginRequest, account: activeAccount });
-          } catch (popupErr) {
-            if ((popupErr as any)?.errorCode === "interaction_in_progress") {
-              setDriveFilesError("Finish or close the previous Microsoft sign-in popup, then try again.");
-              return;
-            }
-            throw popupErr;
-          }
-        } else {
-          throw err;
+          resetBusyState();
+          await msalInstance.acquireTokenRedirect({ ...loginRequest, account: activeAccount });
+          return;
         }
+        throw err;
       }
 
-      const graphResponse = await fetch("https://graph.microsoft.com/v1.0/me/drive/root/children", {
-        headers: { Authorization: `Bearer ${tokenResponse.accessToken}` },
-      });
-      const graphJson = await graphResponse.json();
-      if (!graphResponse.ok) {
-        throw new Error(graphJson?.error?.message || "Graph request failed");
-      }
-
-      setDriveFiles(graphJson.value || []);
+      await fetchDriveFilesFromGraph(tokenResponse.accessToken);
       setTokenExchangeResult(tokenResponse);
+      resetBusyState();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Microsoft sign-in failed";
       setDriveFilesError(message);
       console.error("MSAL sign-in failed:", err);
-    } finally {
-      setIsLoadingFiles(false);
-      setIsMsalBusy(false);
+      resetBusyState();
     }
-  }, [isMsalBusy]);
+  }, [fetchDriveFilesFromGraph, initializeMsal, isMsalBusy]);
 
   const handleOneDriveSearch = async () => {
     const accessToken = tokenExchangeResult?.accessToken || tokenExchangeResult?.access_token;
