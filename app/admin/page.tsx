@@ -3,57 +3,10 @@
 
 import { useAuth } from "react-oidc-context";
 import { useEffect, useState, useCallback } from "react";
-import { InteractionRequiredAuthError } from "@azure/msal-browser";
+import axios from "axios";
 import { msalInstance, loginRequest, initializeMsal } from "../authConfig";
 import { asset } from "../lib/asset";
 
-const PKCE_VERIFIER_STORAGE_KEY = "ms_pkce_verifier";
-
-function base64UrlEncode(arrayBuffer: ArrayBuffer) {
-  let binary = "";
-  const bytes = new Uint8Array(arrayBuffer);
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function generateCodeVerifier(length = 64) {
-  if (typeof window === "undefined" || !window.crypto?.getRandomValues) {
-    return "";
-  }
-  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
-  const randomValues = new Uint8Array(length);
-  window.crypto.getRandomValues(randomValues);
-  return Array.from(randomValues, (value) => charset[value % charset.length]).join("");
-}
-
-async function generateCodeChallenge(verifier: string) {
-  if (typeof window === "undefined" || !window.crypto?.subtle) {
-    return "";
-  }
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await window.crypto.subtle.digest("SHA-256", data);
-  return base64UrlEncode(digest);
-}
-// Redirects to Microsoft OAuth2 authorize endpoint (customized)
-function redirectToMicrosoftSignIn(tenant, clientId, redirectUri, scope, state, codeChallenge?, codeChallengeMethod = "S256") {
-  const params = new URLSearchParams({
-    client_id: clientId,
-    response_type: "code",
-    redirect_uri: redirectUri,
-    response_mode: "query",
-    scope: scope,
-    state: state,
-  });
-  if (codeChallenge) {
-    params.set("code_challenge", codeChallenge);
-    params.set("code_challenge_method", codeChallengeMethod);
-  }
-  const url = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`;
-  window.location.href = url;
-}
 // Cast to any to extend BigInt prototype for JSON serialization
 (BigInt.prototype as any).toJSON = function() {
   return this.toString();
@@ -287,10 +240,9 @@ function SensorBoxTable({ devices }) {
 export default function AdminPage() {
   const auth = useAuth();
 
-  const[devices, setDevices] = useState();
-  const[userDev, setUserDev] = useState();
+  const [devices, setDevices] = useState();
+  const [userDev, setUserDev] = useState();
   const [sensorBoxModel, setSensorBoxModel] = useState(["", "", ""]);
-  const [pkce, setPkce] = useState({ verifier: "", challenge: "" });
   const [tokenExchangeResult, setTokenExchangeResult] = useState(null);
   const [driveSearchResult, setDriveSearchResult] = useState(null);
   const [driveSearchError, setDriveSearchError] = useState("");
@@ -298,85 +250,12 @@ export default function AdminPage() {
   const [driveFiles, setDriveFiles] = useState<any[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [driveFilesError, setDriveFilesError] = useState("");
-  const [isMsalBusy, setIsMsalBusy] = useState(false);
   const fetchDriveFilesFromGraph = useCallback(async (accessToken: string) => {
-    const graphResponse = await fetch("https://graph.microsoft.com/v1.0/me/drive/root/children", {
+    const { data } = await axios.get("https://graph.microsoft.com/v1.0/me/drive/root/children", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    const graphJson = await graphResponse.json();
-    if (!graphResponse.ok) {
-      throw new Error(graphJson?.error?.message || "Graph request failed");
-    }
-    setDriveFiles(graphJson.value || []);
+    setDriveFiles(Array.isArray(data?.value) ? data.value : []);
   }, []);
-
-  // Microsoft OAuth config (customized)
-  const MS_TENANT = "6cb89794-7b66-472d-b0b1-09ed68dafe30";
-  const MS_CLIENT_ID = "231cd4ed-db1c-413d-ab9c-643a61712ee8";
-  const MS_REDIRECT_URI = "https://rht-iot.github.io/ReactWeb/admin";
-  const MS_SCOPE = "User.Read Files.ReadWrite";
-  const MS_STATE = "12345";
-
-  const initializePkcePair = useCallback(async (reuseExisting = true) => {
-    if (typeof window === "undefined") return;
-    try {
-      let verifier = reuseExisting ? window.sessionStorage.getItem(PKCE_VERIFIER_STORAGE_KEY) : null;
-      if (!verifier) {
-        verifier = generateCodeVerifier();
-        if (!verifier) {
-          console.warn("Unable to generate PKCE code_verifier.");
-          return;
-        }
-        window.sessionStorage.setItem(PKCE_VERIFIER_STORAGE_KEY, verifier);
-      }
-      const challenge = await generateCodeChallenge(verifier);
-      if (!challenge) {
-        console.warn("Unable to generate PKCE code_challenge.");
-        return;
-      }
-      setPkce({ verifier, challenge });
-    } catch (error) {
-      console.error("Failed to initialize PKCE pair:", error);
-    }
-  }, []);
-
-  useEffect(() => {
-    initializePkcePair();
-  }, [initializePkcePair]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const bootstrapMsalRedirect = async () => {
-      try {
-        await initializeMsal();
-        const redirectResult = await msalInstance.handleRedirectPromise();
-        if (cancelled) {
-          return;
-        }
-        if (redirectResult?.account) {
-          msalInstance.setActiveAccount?.(redirectResult.account);
-          setTokenExchangeResult(redirectResult);
-          if (redirectResult.accessToken) {
-            await fetchDriveFilesFromGraph(redirectResult.accessToken);
-          }
-        } else {
-          const existingAccounts = msalInstance.getAllAccounts();
-          if (existingAccounts.length) {
-            msalInstance.setActiveAccount?.(existingAccounts[0]);
-          }
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error("MSAL redirect handling failed:", error);
-          setDriveFilesError("Microsoft sign-in redirect failed.");
-        }
-      }
-    };
-    bootstrapMsalRedirect();
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchDriveFilesFromGraph, initializeMsal]);
 
   const refresh_send = {
     Records: [{ eventName: "REFRESH" }]
@@ -489,107 +368,31 @@ export default function AdminPage() {
     }
   }, [auth.isAuthenticated, auth.user?.profile.email]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const authCode = params.get("code");
-    const returningState = params.get("state");
-    if (!authCode) return;
-    if (returningState && returningState !== MS_STATE) {
-      console.warn("State mismatch, aborting token exchange.");
-      return;
-    }
-
-    const exchangeToken = async () => {
-      const storedVerifier = window.sessionStorage.getItem(PKCE_VERIFIER_STORAGE_KEY);
-      if (!storedVerifier) {
-        console.warn("Missing PKCE code_verifier; cannot exchange authorization code.");
-        return;
-      }
-      try {
-        const body = new URLSearchParams({
-          client_id: MS_CLIENT_ID,
-          scope: MS_SCOPE,
-          code: authCode,
-          redirect_uri: MS_REDIRECT_URI,
-          grant_type: "authorization_code",
-          code_verifier: storedVerifier,
-        });
-        const response = await fetch(`https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0/token`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: body.toString(),
-        });
-        const json = await response.json();
-        setTokenExchangeResult(json);
-      } catch (error) {
-        console.error("Token exchange failed:", error);
-      } finally {
-        window.sessionStorage.removeItem(PKCE_VERIFIER_STORAGE_KEY);
-        initializePkcePair(false);
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    };
-
-    exchangeToken();
-  }, [MS_CLIENT_ID, MS_REDIRECT_URI, MS_SCOPE, MS_STATE, MS_TENANT, initializePkcePair]);
-  const [firstName, setFirstName] = useState('');
-
-  const handleMicrosoftSignIn = useCallback(async () => {
-    if (isMsalBusy) return;
-    setIsMsalBusy(true);
+  const signInAndGetFiles = useCallback(async () => {
     setDriveFilesError("");
     setIsLoadingFiles(true);
 
-    const resetBusyState = () => {
-      setIsLoadingFiles(false);
-      setIsMsalBusy(false);
-    };
-
     try {
       await initializeMsal();
+      const loginResponse = await msalInstance.loginPopup(loginRequest);
+      console.log("Logged in:", loginResponse.account);
+      msalInstance.setActiveAccount?.(loginResponse.account);
 
-      let activeAccount = msalInstance.getActiveAccount();
-      if (!activeAccount) {
-        const accounts = msalInstance.getAllAccounts();
-        activeAccount = accounts[0];
-      }
+      const tokenResponse = await msalInstance.acquireTokenSilent({
+        ...loginRequest,
+        account: loginResponse.account,
+      });
 
-      if (!activeAccount) {
-        resetBusyState();
-        await msalInstance.loginRedirect(loginRequest);
-        return;
-      }
-
-      msalInstance.setActiveAccount?.(activeAccount);
-
-      let tokenResponse;
-      try {
-        tokenResponse = await msalInstance.acquireTokenSilent({
-          ...loginRequest,
-          account: activeAccount,
-        });
-      } catch (err) {
-        if (err instanceof InteractionRequiredAuthError) {
-          resetBusyState();
-          await msalInstance.acquireTokenRedirect({ ...loginRequest, account: activeAccount });
-          return;
-        }
-        throw err;
-      }
-
+      console.log("Access Token:", tokenResponse.accessToken);
       await fetchDriveFilesFromGraph(tokenResponse.accessToken);
       setTokenExchangeResult(tokenResponse);
-      resetBusyState();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Microsoft sign-in failed";
-      setDriveFilesError(message);
-      console.error("MSAL sign-in failed:", err);
-      resetBusyState();
+    } catch (error) {
+      console.error(error);
+      setDriveFilesError(error instanceof Error ? error.message : "Microsoft sign-in failed.");
+    } finally {
+      setIsLoadingFiles(false);
     }
-  }, [fetchDriveFilesFromGraph, initializeMsal, isMsalBusy]);
+  }, [fetchDriveFilesFromGraph, initializeMsal]);
 
   const handleOneDriveSearch = async () => {
     const accessToken = tokenExchangeResult?.accessToken || tokenExchangeResult?.access_token;
@@ -647,7 +450,7 @@ export default function AdminPage() {
         <button
           className="brand-button button-outline"
           style={{ marginLeft: 12 }}
-          onClick={handleMicrosoftSignIn}
+          onClick={signInAndGetFiles}
           disabled={isLoadingFiles}
         >
           {isLoadingFiles ? "Loading OneDrive…" : "Sign in with Microsoft"}
@@ -661,7 +464,7 @@ export default function AdminPage() {
         )}
         <button
           className="brand-button button-outline"
-          onClick={handleMicrosoftSignIn}
+          onClick={signInAndGetFiles}
           disabled={isLoadingFiles}
         >
           {isLoadingFiles ? "Loading OneDrive…" : "Sign in & Load Files"}
