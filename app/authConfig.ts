@@ -59,7 +59,7 @@ export const msalConfig = {
   auth: {
     clientId: "231cd4ed-db1c-413d-ab9c-643a61712ee8", // Application (client) ID
     authority: "https://login.microsoftonline.com/6cb89794-7b66-472d-b0b1-09ed68dafe30", // Tenant ID
-    redirectUri: "http://localhost:3000", // must match Azure portal
+    redirectUri: "https://rht-iot.github.io/ReactWeb/admin", // must match Azure portal
   }
 };
 
