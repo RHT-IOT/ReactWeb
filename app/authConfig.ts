@@ -67,7 +67,6 @@ export const loginRequest = {
    scopes: [
     "User.Read",
     "Files.ReadWrite",      // personal OneDrive
-    "Files.ReadWrite.All",  // org OneDrive
     "openid",
     "profile",
     "email"

@@ -2,7 +2,7 @@
 "use client";
 
 import { useAuth } from "react-oidc-context";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import { msalInstance, loginRequest, initializeMsal } from "../authConfig";
 import { asset } from "../lib/asset";
@@ -368,19 +368,36 @@ export default function AdminPage() {
     }
   }, [auth.isAuthenticated, auth.user?.profile.email]);
 
+  const isAuthenticatingRef = useRef(false);
+
   const signInAndGetFiles = useCallback(async () => {
+    if (isAuthenticatingRef.current) {
+      return;
+    }
+
+    isAuthenticatingRef.current = true;
     setDriveFilesError("");
     setIsLoadingFiles(true);
 
     try {
       await initializeMsal();
-      const loginResponse = await msalInstance.loginPopup(loginRequest);
-      console.log("Logged in:", loginResponse.account);
-      msalInstance.setActiveAccount?.(loginResponse.account);
+
+      let account = msalInstance.getActiveAccount();
+      if (!account) {
+        const [firstAccount] = msalInstance.getAllAccounts();
+        account = firstAccount;
+      }
+
+      if (!account) {
+        const loginResponse = await msalInstance.loginPopup(loginRequest);
+        console.log("Logged in:", loginResponse.account);
+        account = loginResponse.account;
+        msalInstance.setActiveAccount?.(account);
+      }
 
       const tokenResponse = await msalInstance.acquireTokenSilent({
         ...loginRequest,
-        account: loginResponse.account,
+        account,
       });
 
       console.log("Access Token:", tokenResponse.accessToken);
@@ -388,8 +405,15 @@ export default function AdminPage() {
       setTokenExchangeResult(tokenResponse);
     } catch (error) {
       console.error(error);
-      setDriveFilesError(error instanceof Error ? error.message : "Microsoft sign-in failed.");
+      const code = (error as any)?.errorCode;
+      const message = code === "interaction_in_progress"
+        ? "Complete or close the active Microsoft sign-in popup before starting a new one."
+        : error instanceof Error
+          ? error.message
+          : "Microsoft sign-in failed.";
+      setDriveFilesError(message);
     } finally {
+      isAuthenticatingRef.current = false;
       setIsLoadingFiles(false);
     }
   }, [fetchDriveFilesFromGraph, initializeMsal]);
