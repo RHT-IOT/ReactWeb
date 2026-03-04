@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import { useAuth } from "react-oidc-context";
@@ -308,9 +308,6 @@ export default function AdminPage() {
   const MS_REDIRECT_URI = "https://rht-iot.github.io/ReactWeb/admin";
   const MS_SCOPE = "User.Read Files.ReadWrite";
   const MS_STATE = "12345";
-  const DEVICE_TENANT = "consumers";
-  const DEVICE_CLIENT_ID = "ac9f3d86-56e6-4e42-8fd2-4f6c07fc08b9";
-  const DEVICE_SCOPE = "User.Read Files.Read";
 
   const initializePkcePair = useCallback(async (reuseExisting = true) => {
     if (typeof window === "undefined") return;
@@ -506,14 +503,12 @@ export default function AdminPage() {
     setIsLoadingFiles(true);
 
     try {
-      const deviceResp = await fetch(`https://login.microsoftonline.com/${DEVICE_TENANT}/oauth2/v2.0/devicecode`, {
+      const deviceResp = await fetch("/api/microsoft-device/device-code", {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ client_id: DEVICE_CLIENT_ID, scope: DEVICE_SCOPE }).toString(),
       });
       const deviceJson = await deviceResp.json();
       if (!deviceResp.ok) {
-        throw new Error(deviceJson?.error_description || "Failed to start Microsoft sign-in.");
+        throw new Error(deviceJson?.error_description || deviceJson?.error || "Failed to start Microsoft sign-in.");
       }
 
       const verificationUri = deviceJson.verification_uri_complete || deviceJson.verification_uri;
@@ -527,18 +522,14 @@ export default function AdminPage() {
       let tokenJson;
 
       while (true) {
-        const tokenResp = await fetch(`https://login.microsoftonline.com/${DEVICE_TENANT}/oauth2/v2.0/token`, {
+        const tokenResp = await fetch("/api/microsoft-device/token", {
           method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-            client_id: DEVICE_CLIENT_ID,
-            device_code: deviceJson.device_code,
-          }).toString(),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceCode: deviceJson.device_code }),
         });
         const result = await tokenResp.json();
 
-        if (result?.access_token) {
+        if (tokenResp.ok && result?.access_token) {
           tokenJson = result;
           break;
         }
@@ -553,7 +544,7 @@ export default function AdminPage() {
           continue;
         }
 
-        throw new Error(result?.error_description || "Microsoft sign-in failed.");
+        throw new Error(result?.error_description || result?.error || "Microsoft sign-in failed.");
       }
 
       setTokenExchangeResult(tokenJson);
