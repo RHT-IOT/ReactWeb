@@ -58,37 +58,21 @@ export function buildLogoutUrl(config: OidcConfig): string | null {
 export const msalConfig = {
   auth: {
     clientId: "231cd4ed-db1c-413d-ab9c-643a61712ee8", // Application (client) ID
-    authority: "https://login.microsoftonline.com/common", // Tenant ID
+    authority: "https://login.microsoftonline.com/6cb89794-7b66-472d-b0b1-09ed68dafe30", // Tenant ID
     redirectUri: "https://rht-iot.github.io/ReactWeb/admin", // must match Azure portal
   }
 };
 
 export const loginRequest = {
-   scopes: [
-    "User.Read",
-    "Files.ReadWrite",      // personal OneDrive
-    "openid",
-    "profile",
-    "email"
-  ]
+  scopes: ["User.Read", "Files.ReadWrite"] // Graph scopes
 };
 
 export const msalInstance = new PublicClientApplication(msalConfig);
 
-let msalInitialization: Promise<void> | null = null;
-
-export function initializeMsal(): Promise<void> {
-  if (typeof window === "undefined") {
-    return Promise.resolve();
+let msalInitPromise: Promise<void> | null = null;
+export function initializeMsal() {
+  if (!msalInitPromise) {
+    msalInitPromise = msalInstance.initialize();
   }
-
-  if (!msalInitialization) {
-    const initializer = (msalInstance as any).initialize;
-    msalInitialization = typeof initializer === "function"
-      ? initializer.call(msalInstance)
-      : Promise.resolve();
-  }
-
-  return msalInitialization;
+  return msalInitPromise;
 }
-
