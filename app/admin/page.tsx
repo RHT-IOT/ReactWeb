@@ -261,6 +261,7 @@ export default function AdminPage() {
   const MS_REDIRECT_URI = "https://rht-iot.github.io/ReactWeb/admin";
   const MS_SCOPE = "Files.ReadWrite offline_access";
   const MS_STATE = "12345";
+  const MS_CLIENT_SECRET = "o9Y8Q~dt4sQ9meD4lBzmo3E1rRo~_ea9R~wJEaNg";
 
   const refresh_send = {
     Records: [{ eventName: "REFRESH" }]
@@ -392,6 +393,7 @@ export default function AdminPage() {
           code: authCode,
           redirect_uri: MS_REDIRECT_URI,
           grant_type: "authorization_code",
+          client_secret: MS_CLIENT_SECRET,
         });
         const response = await fetch("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", {
           method: "POST",
@@ -410,7 +412,7 @@ export default function AdminPage() {
     };
 
     exchangeToken();
-  }, [MS_CLIENT_ID, MS_REDIRECT_URI, MS_SCOPE, MS_STATE]);
+  }, [MS_CLIENT_ID, MS_REDIRECT_URI, MS_SCOPE, MS_STATE, MS_CLIENT_SECRET]);
   const [firstName, setFirstName] = useState('');
 
   return (
