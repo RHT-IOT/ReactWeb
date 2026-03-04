@@ -3,6 +3,7 @@
 
 import { useAuth } from "react-oidc-context";
 import { useEffect, useState,useId, useCallback } from "react";
+import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
 import { asset } from "../lib/asset";
 
 const PKCE_VERIFIER_STORAGE_KEY = "ms_pkce_verifier";
@@ -301,6 +302,24 @@ export default function AdminPage() {
   const MS_SCOPE = "Files.ReadWrite.All offline_access";
   const MS_STATE = "12345";
 
+  // MSAL configuration and instance
+  const msalConfig = {
+    auth: {
+      clientId: MS_CLIENT_ID,
+      authority: `https://login.microsoftonline.com/${MS_TENANT}`,
+      redirectUri: MS_REDIRECT_URI,
+    },
+    cache: {
+      cacheLocation: "sessionStorage",
+    },
+  };
+
+  const msalInstance = new PublicClientApplication(msalConfig);
+
+  const loginRequest = {
+    scopes: MS_SCOPE.split(" ")
+  };
+
   const initializePkcePair = useCallback(async (reuseExisting = true) => {
     if (typeof window === "undefined") return;
     try {
@@ -488,18 +507,31 @@ export default function AdminPage() {
   const [firstName, setFirstName] = useState('');
 
   const handleMicrosoftSignIn = () => {
-    if (!pkce.challenge) {
-      console.warn("PKCE challenge not ready yet; please try again in a moment.");
-      return;
-    }
-    redirectToMicrosoftSignIn(
-      MS_TENANT,
-      MS_CLIENT_ID,
-      MS_REDIRECT_URI,
-      MS_SCOPE,
-      MS_STATE,
-      pkce.challenge
-    );
+    (async () => {
+      try {
+        const loginResponse = await msalInstance.loginPopup(loginRequest);
+        console.log("MSAL login response:", loginResponse);
+
+        // attempt silent token acquisition for the active account
+        const account = msalInstance.getAllAccounts()[0];
+        const silentRequest = { ...loginRequest, account };
+        let tokenResponse;
+        try {
+          tokenResponse = await msalInstance.acquireTokenSilent(silentRequest);
+        } catch (err) {
+          if (err instanceof InteractionRequiredAuthError) {
+            tokenResponse = await msalInstance.acquireTokenPopup(loginRequest);
+          } else {
+            throw err;
+          }
+        }
+
+        console.log("Access Token:", tokenResponse.accessToken);
+        setTokenExchangeResult(tokenResponse);
+      } catch (err) {
+        console.error("MSAL sign-in failed:", err);
+      }
+    })();
   };
 
   const handleOneDriveSearch = async () => {

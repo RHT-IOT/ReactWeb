@@ -1,3 +1,4 @@
+import { PublicClientApplication } from "@azure/msal-browser";
 export type OidcConfig = {
   authority: string;
   client_id: string;
@@ -53,3 +54,17 @@ export function buildLogoutUrl(config: OidcConfig): string | null {
   const logoutUri = `${origin}${BASE_PATH}/`;
   return `${domain}/logout?client_id=${config.client_id}&logout_uri=${encodeURIComponent(logoutUri)}`;
 }
+
+export const msalConfig = {
+  auth: {
+    clientId: "231cd4ed-db1c-413d-ab9c-643a61712ee8", // Application (client) ID
+    authority: "https://login.microsoftonline.com/55e73747-8c96-4116-a890-c1c5a908846b", // Tenant ID
+    redirectUri: "http://localhost:3000", // must match Azure portal
+  }
+};
+
+export const loginRequest = {
+  scopes: ["User.Read", "Files.ReadWrite"] // Graph scopes
+};
+
+export const msalInstance = new PublicClientApplication(msalConfig);
