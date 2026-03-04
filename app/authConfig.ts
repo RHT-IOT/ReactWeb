@@ -58,7 +58,7 @@ export function buildLogoutUrl(config: OidcConfig): string | null {
 export const msalConfig = {
   auth: {
     clientId: "231cd4ed-db1c-413d-ab9c-643a61712ee8", // Application (client) ID
-    authority: "https://login.microsoftonline.com/55e73747-8c96-4116-a890-c1c5a908846b", // Tenant ID
+    authority: "https://login.microsoftonline.com/6cb89794-7b66-472d-b0b1-09ed68dafe30", // Tenant ID
     redirectUri: "http://localhost:3000", // must match Azure portal
   }
 };
@@ -68,3 +68,11 @@ export const loginRequest = {
 };
 
 export const msalInstance = new PublicClientApplication(msalConfig);
+
+let msalInitPromise: Promise<void> | null = null;
+export function initializeMsal() {
+  if (!msalInitPromise) {
+    msalInitPromise = msalInstance.initialize();
+  }
+  return msalInitPromise;
+}

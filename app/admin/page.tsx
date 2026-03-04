@@ -2,8 +2,9 @@
 "use client";
 
 import { useAuth } from "react-oidc-context";
-import { useEffect, useState,useId, useCallback } from "react";
-import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
+import { useEffect, useState, useCallback } from "react";
+import { InteractionRequiredAuthError } from "@azure/msal-browser";
+import { msalInstance, loginRequest, initializeMsal } from "../authConfig";
 import { asset } from "../lib/asset";
 
 const PKCE_VERIFIER_STORAGE_KEY = "ms_pkce_verifier";
@@ -294,31 +295,17 @@ export default function AdminPage() {
   const [driveSearchResult, setDriveSearchResult] = useState(null);
   const [driveSearchError, setDriveSearchError] = useState("");
   const [isSearchingDrive, setIsSearchingDrive] = useState(false);
+  const [driveFiles, setDriveFiles] = useState<any[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [driveFilesError, setDriveFilesError] = useState("");
+  const [isMsalBusy, setIsMsalBusy] = useState(false);
 
   // Microsoft OAuth config (customized)
   const MS_TENANT = "6cb89794-7b66-472d-b0b1-09ed68dafe30";
-  const MS_CLIENT_ID = "e2f751a9-87fe-4a89-982d-d73b8b8c2f19";
-  const MS_REDIRECT_URI = "https://rht-iot.github.io/ReactWeb/admin";
-  const MS_SCOPE = "Files.ReadWrite.All offline_access";
+  const MS_CLIENT_ID = "231cd4ed-db1c-413d-ab9c-643a61712ee8";
+  const MS_REDIRECT_URI = "http://localhost:3000";
+  const MS_SCOPE = "User.Read Files.ReadWrite";
   const MS_STATE = "12345";
-
-  // MSAL configuration and instance
-  const msalConfig = {
-    auth: {
-      clientId: MS_CLIENT_ID,
-      authority: `https://login.microsoftonline.com/${MS_TENANT}`,
-      redirectUri: MS_REDIRECT_URI,
-    },
-    cache: {
-      cacheLocation: "sessionStorage",
-    },
-  };
-
-  const msalInstance = new PublicClientApplication(msalConfig);
-
-  const loginRequest = {
-    scopes: MS_SCOPE.split(" ")
-  };
 
   const initializePkcePair = useCallback(async (reuseExisting = true) => {
     if (typeof window === "undefined") return;
@@ -506,36 +493,79 @@ export default function AdminPage() {
   }, [MS_CLIENT_ID, MS_REDIRECT_URI, MS_SCOPE, MS_STATE, MS_TENANT, initializePkcePair]);
   const [firstName, setFirstName] = useState('');
 
-  const handleMicrosoftSignIn = () => {
-    (async () => {
-      try {
-        const loginResponse = await msalInstance.loginPopup(loginRequest);
-        console.log("MSAL login response:", loginResponse);
+  const handleMicrosoftSignIn = useCallback(async () => {
+    if (isMsalBusy) return; // avoid overlapping popups
+    setIsMsalBusy(true);
+    setDriveFilesError("");
+    setIsLoadingFiles(true);
 
-        // attempt silent token acquisition for the active account
-        const account = msalInstance.getAllAccounts()[0];
-        const silentRequest = { ...loginRequest, account };
-        let tokenResponse;
+    try {
+      await initializeMsal();
+
+      const accounts = msalInstance.getAllAccounts();
+      let activeAccount = accounts[0] || msalInstance.getActiveAccount();
+
+      if (!activeAccount) {
         try {
-          tokenResponse = await msalInstance.acquireTokenSilent(silentRequest);
+          const loginResponse = await msalInstance.loginPopup(loginRequest);
+          activeAccount = loginResponse.account;
         } catch (err) {
-          if (err instanceof InteractionRequiredAuthError) {
-            tokenResponse = await msalInstance.acquireTokenPopup(loginRequest);
-          } else {
-            throw err;
+          if ((err as any)?.errorCode === "interaction_in_progress") {
+            setDriveFilesError("Finish or close the previous Microsoft sign-in popup, then try again.");
+            return;
           }
+          throw err;
         }
-
-        console.log("Access Token:", tokenResponse.accessToken);
-        setTokenExchangeResult(tokenResponse);
-      } catch (err) {
-        console.error("MSAL sign-in failed:", err);
       }
-    })();
-  };
+
+      if (activeAccount && msalInstance.setActiveAccount) {
+        msalInstance.setActiveAccount(activeAccount);
+      }
+
+      let tokenResponse;
+      try {
+        tokenResponse = await msalInstance.acquireTokenSilent({
+          ...loginRequest,
+          account: activeAccount,
+        });
+      } catch (err) {
+        if (err instanceof InteractionRequiredAuthError) {
+          try {
+            tokenResponse = await msalInstance.acquireTokenPopup({ ...loginRequest, account: activeAccount });
+          } catch (popupErr) {
+            if ((popupErr as any)?.errorCode === "interaction_in_progress") {
+              setDriveFilesError("Finish or close the previous Microsoft sign-in popup, then try again.");
+              return;
+            }
+            throw popupErr;
+          }
+        } else {
+          throw err;
+        }
+      }
+
+      const graphResponse = await fetch("https://graph.microsoft.com/v1.0/me/drive/root/children", {
+        headers: { Authorization: `Bearer ${tokenResponse.accessToken}` },
+      });
+      const graphJson = await graphResponse.json();
+      if (!graphResponse.ok) {
+        throw new Error(graphJson?.error?.message || "Graph request failed");
+      }
+
+      setDriveFiles(graphJson.value || []);
+      setTokenExchangeResult(tokenResponse);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Microsoft sign-in failed";
+      setDriveFilesError(message);
+      console.error("MSAL sign-in failed:", err);
+    } finally {
+      setIsLoadingFiles(false);
+      setIsMsalBusy(false);
+    }
+  }, [isMsalBusy]);
 
   const handleOneDriveSearch = async () => {
-    const accessToken = tokenExchangeResult?.access_token;
+    const accessToken = tokenExchangeResult?.accessToken || tokenExchangeResult?.access_token;
     if (!accessToken) {
       setDriveSearchError("Retrieve an access token first.");
       return;
@@ -591,10 +621,33 @@ export default function AdminPage() {
           className="brand-button button-outline"
           style={{ marginLeft: 12 }}
           onClick={handleMicrosoftSignIn}
-          disabled={!pkce.challenge}
+          disabled={isLoadingFiles}
         >
-          Sign in with Microsoft
+          {isLoadingFiles ? "Loading OneDrive…" : "Sign in with Microsoft"}
         </button>
+      </div>
+
+      <div className="panel" style={{ marginTop: 16 }}>
+        <div className="section-title">OneDrive Root Files</div>
+        {driveFilesError && (
+          <p style={{ color: "red", marginBottom: 8 }}>{driveFilesError}</p>
+        )}
+        <button
+          className="brand-button button-outline"
+          onClick={handleMicrosoftSignIn}
+          disabled={isLoadingFiles}
+        >
+          {isLoadingFiles ? "Loading OneDrive…" : "Sign in & Load Files"}
+        </button>
+        {driveFiles.length === 0 && !driveFilesError ? (
+          <p style={{ marginTop: 8 }}>Sign in to see your OneDrive files.</p>
+        ) : (
+          <ul style={{ marginTop: 12 }}>
+            {driveFiles.map((file) => (
+              <li key={file.id}>{file.name}</li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {tokenExchangeResult && (
