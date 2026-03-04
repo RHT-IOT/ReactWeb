@@ -290,6 +290,9 @@ export default function AdminPage() {
   const [sensorBoxModel, setSensorBoxModel] = useState(["", "", ""]);
   const [pkce, setPkce] = useState({ verifier: "", challenge: "" });
   const [tokenExchangeResult, setTokenExchangeResult] = useState(null);
+  const [driveSearchResult, setDriveSearchResult] = useState(null);
+  const [driveSearchError, setDriveSearchError] = useState("");
+  const [isSearchingDrive, setIsSearchingDrive] = useState(false);
 
   // Microsoft OAuth config (customized)
   const MS_TENANT = "6cb89794-7b66-472d-b0b1-09ed68dafe30";
@@ -499,6 +502,40 @@ export default function AdminPage() {
     );
   };
 
+  const handleOneDriveSearch = async () => {
+    const accessToken = tokenExchangeResult?.access_token;
+    if (!accessToken) {
+      setDriveSearchError("Retrieve an access token first.");
+      return;
+    }
+
+    const searchTerm = "202602_Amber";
+    const encodedTerm = encodeURIComponent(searchTerm);
+    const url = `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodedTerm}')`;
+
+    try {
+      setIsSearchingDrive(true);
+      setDriveSearchError("");
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setDriveSearchResult(null);
+        setDriveSearchError(data?.error?.message || "Graph search failed.");
+        return;
+      }
+      setDriveSearchResult(data);
+    } catch (error) {
+      setDriveSearchResult(null);
+      setDriveSearchError(error instanceof Error ? error.message : "Unexpected error.");
+    } finally {
+      setIsSearchingDrive(false);
+    }
+  };
+
   return (
 
     <div className="page-container" style={{ paddingTop: 24 }}>
@@ -529,12 +566,33 @@ export default function AdminPage() {
       </div>
 
       {tokenExchangeResult && (
-        <div className="panel" style={{ marginTop: 16 }}>
-          <div className="section-title">Microsoft Token Response</div>
-          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-            {JSON.stringify(tokenExchangeResult, null, 2)}
-          </pre>
-        </div>
+        <>
+          <div className="panel" style={{ marginTop: 16 }}>
+            <div className="section-title">Microsoft Token Response</div>
+            <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {JSON.stringify(tokenExchangeResult, null, 2)}
+            </pre>
+          </div>
+          <div className="panel" style={{ marginTop: 16 }}>
+            <div className="section-title">OneDrive Search</div>
+            <p>Search term: <strong>202602_Amber</strong></p>
+            <button
+              className="brand-button button-outline"
+              onClick={handleOneDriveSearch}
+              disabled={isSearchingDrive}
+            >
+              {isSearchingDrive ? "Searching…" : "Search OneDrive"}
+            </button>
+            {driveSearchError && (
+              <p style={{ color: "red", marginTop: 8 }}>{driveSearchError}</p>
+            )}
+            {driveSearchResult && (
+              <pre style={{ marginTop: 12, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                {JSON.stringify(driveSearchResult, null, 2)}
+              </pre>
+            )}
+          </div>
+        </>
       )}
     
       <div className="panel" style={{ marginTop: 16 }}>
