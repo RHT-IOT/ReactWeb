@@ -2,10 +2,41 @@
 "use client";
 
 import { useAuth } from "react-oidc-context";
-import { useEffect, useState,useId } from "react";
+import { useEffect, useState,useId, useCallback } from "react";
 import { asset } from "../lib/asset";
+
+const PKCE_VERIFIER_STORAGE_KEY = "ms_pkce_verifier";
+
+function base64UrlEncode(arrayBuffer: ArrayBuffer) {
+  let binary = "";
+  const bytes = new Uint8Array(arrayBuffer);
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function generateCodeVerifier(length = 64) {
+  if (typeof window === "undefined" || !window.crypto?.getRandomValues) {
+    return "";
+  }
+  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+  const randomValues = new Uint8Array(length);
+  window.crypto.getRandomValues(randomValues);
+  return Array.from(randomValues, (value) => charset[value % charset.length]).join("");
+}
+
+async function generateCodeChallenge(verifier: string) {
+  if (typeof window === "undefined" || !window.crypto?.subtle) {
+    return "";
+  }
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await window.crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(digest);
+}
 // Redirects to Microsoft OAuth2 authorize endpoint (customized)
-function redirectToMicrosoftSignIn(tenant, clientId, redirectUri, scope, state) {
+function redirectToMicrosoftSignIn(tenant, clientId, redirectUri, scope, state, codeChallenge?, codeChallengeMethod = "S256") {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
@@ -14,6 +45,10 @@ function redirectToMicrosoftSignIn(tenant, clientId, redirectUri, scope, state) 
     scope: scope,
     state: state,
   });
+  if (codeChallenge) {
+    params.set("code_challenge", codeChallenge);
+    params.set("code_challenge_method", codeChallengeMethod);
+  }
   const url = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`;
   window.location.href = url;
 }
@@ -253,6 +288,7 @@ export default function AdminPage() {
   const[devices, setDevices] = useState();
   const[userDev, setUserDev] = useState();
   const [sensorBoxModel, setSensorBoxModel] = useState(["", "", ""]);
+  const [pkce, setPkce] = useState({ verifier: "", challenge: "" });
   const [tokenExchangeResult, setTokenExchangeResult] = useState(null);
 
   // Microsoft OAuth config (customized)
@@ -262,6 +298,33 @@ export default function AdminPage() {
   const MS_SCOPE = "Files.ReadWrite offline_access";
   const MS_STATE = "12345";
   const MS_CLIENT_SECRET = "o9Y8Q~dt4sQ9meD4lBzmo3E1rRo~_ea9R~wJEaNg";
+
+  const initializePkcePair = useCallback(async (reuseExisting = true) => {
+    if (typeof window === "undefined") return;
+    try {
+      let verifier = reuseExisting ? window.sessionStorage.getItem(PKCE_VERIFIER_STORAGE_KEY) : null;
+      if (!verifier) {
+        verifier = generateCodeVerifier();
+        if (!verifier) {
+          console.warn("Unable to generate PKCE code_verifier.");
+          return;
+        }
+        window.sessionStorage.setItem(PKCE_VERIFIER_STORAGE_KEY, verifier);
+      }
+      const challenge = await generateCodeChallenge(verifier);
+      if (!challenge) {
+        console.warn("Unable to generate PKCE code_challenge.");
+        return;
+      }
+      setPkce({ verifier, challenge });
+    } catch (error) {
+      console.error("Failed to initialize PKCE pair:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    initializePkcePair();
+  }, [initializePkcePair]);
 
   const refresh_send = {
     Records: [{ eventName: "REFRESH" }]
@@ -386,6 +449,11 @@ export default function AdminPage() {
     }
 
     const exchangeToken = async () => {
+      const storedVerifier = window.sessionStorage.getItem(PKCE_VERIFIER_STORAGE_KEY);
+      if (!storedVerifier) {
+        console.warn("Missing PKCE code_verifier; cannot exchange authorization code.");
+        return;
+      }
       try {
         const body = new URLSearchParams({
           client_id: MS_CLIENT_ID,
@@ -394,6 +462,7 @@ export default function AdminPage() {
           redirect_uri: MS_REDIRECT_URI,
           grant_type: "authorization_code",
           client_secret: MS_CLIENT_SECRET,
+          code_verifier: storedVerifier,
         });
         const response = await fetch(`https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0/token`, {
           method: "POST",
@@ -407,13 +476,30 @@ export default function AdminPage() {
       } catch (error) {
         console.error("Token exchange failed:", error);
       } finally {
+        window.sessionStorage.removeItem(PKCE_VERIFIER_STORAGE_KEY);
+        initializePkcePair(false);
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     };
 
     exchangeToken();
-  }, [MS_CLIENT_ID, MS_REDIRECT_URI, MS_SCOPE, MS_STATE, MS_CLIENT_SECRET]);
+  }, [MS_CLIENT_ID, MS_REDIRECT_URI, MS_SCOPE, MS_STATE, MS_CLIENT_SECRET, MS_TENANT, initializePkcePair]);
   const [firstName, setFirstName] = useState('');
+
+  const handleMicrosoftSignIn = () => {
+    if (!pkce.challenge) {
+      console.warn("PKCE challenge not ready yet; please try again in a moment.");
+      return;
+    }
+    redirectToMicrosoftSignIn(
+      MS_TENANT,
+      MS_CLIENT_ID,
+      MS_REDIRECT_URI,
+      MS_SCOPE,
+      MS_STATE,
+      pkce.challenge
+    );
+  };
 
   return (
 
@@ -437,7 +523,8 @@ export default function AdminPage() {
         <button
           className="brand-button button-outline"
           style={{ marginLeft: 12 }}
-          onClick={() => redirectToMicrosoftSignIn(MS_TENANT, MS_CLIENT_ID, MS_REDIRECT_URI, MS_SCOPE, MS_STATE)}
+          onClick={handleMicrosoftSignIn}
+          disabled={!pkce.challenge}
         >
           Sign in with Microsoft
         </button>
