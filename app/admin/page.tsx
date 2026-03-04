@@ -256,7 +256,7 @@ export default function AdminPage() {
   const [tokenExchangeResult, setTokenExchangeResult] = useState(null);
 
   // Microsoft OAuth config (customized)
-  const MS_TENANT = "consumers";
+  const MS_TENANT = "6cb89794-7b66-472d-b0b1-09ed68dafe30";
   const MS_CLIENT_ID = "e2f751a9-87fe-4a89-982d-d73b8b8c2f19";
   const MS_REDIRECT_URI = "https://rht-iot.github.io/ReactWeb/admin";
   const MS_SCOPE = "Files.ReadWrite offline_access";
@@ -395,7 +395,7 @@ export default function AdminPage() {
           grant_type: "authorization_code",
           client_secret: MS_CLIENT_SECRET,
         });
-        const response = await fetch("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", {
+        const response = await fetch(`https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0/token`, {
           method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
