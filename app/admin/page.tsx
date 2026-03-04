@@ -1,571 +1,62 @@
+﻿"use client";
 
-"use client";
-
-import { useAuth } from "react-oidc-context";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useState } from "react";
 import axios from "axios";
-import { msalInstance, loginRequest, initializeMsal } from "../authConfig";
-import { asset } from "../lib/asset";
+import { msalInstance, loginRequest } from "../authConfig";
 
-// Cast to any to extend BigInt prototype for JSON serialization
-(BigInt.prototype as any).toJSON = function() {
-  return this.toString();
+type DriveFile = {
+  id: string;
+  name: string;
 };
-function AccessManager({ data, onSave }) {
-  if (!data) {
-    return <div>Loading…</div>;
-  }
-  const { email, Location, DevList, CurrDevAccess } = data;
 
-  // State: which email has which selections
-  const [access, setAccess] = useState(
-    email.reduce((acc, e, idx) => {
-      acc[e] = {}; // each email has a map of location -> selected devices
-      if (CurrDevAccess && CurrDevAccess[idx]) {
-        const userAccess = CurrDevAccess[idx];
-        if (userAccess.Location && userAccess.DevList) {
-          userAccess.Location.forEach((loc, locIdx) => {
-            acc[e][loc] = userAccess.DevList[locIdx] || [];
-          });
-        }
-      }
-      return acc;
-    }, {})
-  );
+export default function MicrosoftLoginPage() {
+  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [error, setError] = useState<string>("");
 
-  const toggleDevice = (user, loc, device) => {
-    setAccess(prev => {
-      const userAccess = { ...prev[user] };
-      const locAccess = new Set(userAccess[loc] || []);
-      if (locAccess.has(device)) {
-        locAccess.delete(device);
-      } else {
-        locAccess.add(device);
-      }
-      userAccess[loc] = Array.from(locAccess);
-      return { ...prev, [user]: userAccess };
-    });
-  };
-
-  // Select all devices for a given user/location
-  const selectAllForLocation = (user, loc, devices) => {
-    setAccess(prev => {
-      const userAccess = { ...prev[user] };
-      const current = new Set(userAccess[loc] || []);
-      for (const d of devices) current.add(d);
-      userAccess[loc] = Array.from(current);
-      return { ...prev, [user]: userAccess };
-    });
-  };
-
-  // Clear all devices for a given user/location
-  const clearAllForLocation = (user, loc) => {
-    const prev = access;
-    const userAccess = { ...prev[user] };
-    userAccess[loc] = [];
-    // delete userAccess[user][loc];
-    const next = { ...prev, [user]: userAccess };
-    delete next[user][loc];
-    setAccess(next);
-    if (onSave) {
-      onSave(next);
-    } else {
-      console.log("Access cleared and saved:", next);
-    }
-  };
-
-  const handleSave = () => {
-    // Call the parent function with the current access state
-    if (onSave) {
-      onSave(access);
-    } else {
-      console.log("Access state:", access);
-    }
-  };
-
-  return (
-    <div>
-    <div style={{ display: "flex", gap: "24px" }}>
-     
-      {email.map(user => (
-        <div key={user} style={{ border: "1px solid #ccc", padding: 12 }}>
-          <h3>{user}</h3>
-          {Location.map((loc, idx) => (
-            <div key={loc} style={{ marginBottom: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    fontWeight: access[user][loc] !== undefined ? "bold" : "normal",
-                    textDecoration: access[user][loc] !== undefined ? "underline" : "none",
-                  }}
-                >
-                  {loc}
-                </span>
-                <button
-                  className="brand-button button-outline"
-                  style={{ padding: "2px 6px", fontSize: 12 }}
-                  onClick={() => selectAllForLocation(user, loc, DevList[idx] || [])}
-                  disabled={false}
-                >
-                  Select All
-                </button>
-                <button
-                  className="brand-button button-outline"
-                  style={{ padding: "2px 6px", fontSize: 12 }}
-                  onClick={() => clearAllForLocation(user, loc)}
-                >
-                  Clear
-                </button>
-              </div>
-              <div style={{ marginLeft: 12 }}>
-                {DevList[idx].length === 0 ? (
-                  <em>No devices</em>
-                ) : (
-                  DevList[idx].map(dev => (
-                    <label key={dev} style={{ display: "block" }}>
-                      <input
-                        type="checkbox"
-                        checked={access[user][loc]?.includes(dev) || false}
-                        onChange={() => toggleDevice(user, loc, dev)}
-                      />
-                      {dev}
-                    </label>
-                  ))
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-      <pre style={{ flex: 1, background: "#f9f9f9", padding: 12 }}>
-        {JSON.stringify(access, null, 2)}
-      </pre>
-
-        
-    </div>
-    <button className="brand-button button-outline"  onClick={handleSave} style={{ marginTop: 16 }}>
-        Save Access
-      </button>
-    </div>
-    
-  );
-}
-function ThreeTextBoxRow({values,setValues}) {
-
-  const handleChange = (index, newValue) => {
-    const updated = [...values];
-    updated[index] = newValue;
-    setValues(updated);
-  };
-
-  return (
-    <table
-      style={{
-        borderCollapse: "collapse",
-        width: "100%",
-        border: "1px solid black",
-      }}
-    >
-      <thead>
-        <tr>
-          <th style={{ border: "1px solid black", padding: "6px" }}>DeviceID</th>
-          <th style={{ border: "1px solid black", padding: "6px" }}>Location</th>
-          <th style={{ border: "1px solid black", padding: "6px" }}>Coordinate (lat, long)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          {values.map((val, idx) => (
-            <td key={idx} style={{ border: "1px solid black", padding: "6px" }}>
-              <textarea
-                value={val}
-                onChange={(e) => handleChange(idx, e.target.value)}
-                rows={1}
-                style={{
-                  backgroundColor: "white",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                  width: "100%",
-                }}
-              />
-            </td>
-          ))}
-        </tr>
-      </tbody>
-    </table>
-  );
-}
-// Child component
-function SensorBoxTable({ devices }) {
-
-
-  if (!devices || devices.length === 0) {
-    return <pre>No data yet</pre>;
-  }
-
-  return (
-    <table
-    style={{
-      borderCollapse: "collapse",
-      width: "100%",
-      border: "1px solid black", // outer border
-    }}
-  >
-    <thead>
-      <tr>
-        <th style={{ border: "1px solid black", padding: "6px" }}>DeviceID</th>
-        <th style={{ border: "1px solid black", padding: "6px" }}>Location</th>
-        <th style={{ border: "1px solid black", padding: "6px" }}>Coordinate</th>
-      </tr>
-    </thead>
-    <tbody>
-      {devices.map((d, idx) => (
-        <tr key={idx}>
-          <td style={{ border: "1px solid black", padding: "6px" }}>{d.DeviceID}</td>
-          <td style={{ border: "1px solid black", padding: "6px" }}>{d.Location}</td>
-          <td style={{ border: "1px solid black", padding: "6px" }}>
-            {Array.isArray(d.Coordinate) ? d.Coordinate.join(", ") : d.Coordinate}
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-  );
-}
-  
-
-
-
-// Parent component
-export default function AdminPage() {
-  const auth = useAuth();
-
-  const [devices, setDevices] = useState();
-  const [userDev, setUserDev] = useState();
-  const [sensorBoxModel, setSensorBoxModel] = useState(["", "", ""]);
-  const [tokenExchangeResult, setTokenExchangeResult] = useState(null);
-  const [driveSearchResult, setDriveSearchResult] = useState(null);
-  const [driveSearchError, setDriveSearchError] = useState("");
-  const [isSearchingDrive, setIsSearchingDrive] = useState(false);
-  const [driveFiles, setDriveFiles] = useState<any[]>([]);
-  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
-  const [driveFilesError, setDriveFilesError] = useState("");
-  const fetchDriveFilesFromGraph = useCallback(async (accessToken: string) => {
-    const { data } = await axios.get("https://graph.microsoft.com/v1.0/me/drive/root/children", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    setDriveFiles(Array.isArray(data?.value) ? data.value : []);
-  }, []);
-
-  const refresh_send = {
-    Records: [{ eventName: "REFRESH" }]
-  };
-
-  const Refresh = () => {
-    return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/Refresh", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${auth.user?.id_token}`,
-      },
-      body: JSON.stringify(refresh_send),
-    });
-  };
-  const GetDevUser = async() => {
-     await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/showUserDevice", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${auth.user?.id_token}`,
-      }
-    })
-    .then((res) => res.json())
-    .then((data) => {
-      console.log("Raw API response:", data);
-      const parsed = typeof data.body === "string" ? JSON.parse(data.body) : data.body;
-      setUserDev(parsed);
-    })
-    .catch((err) => console.error(err));
-    return;
-  };
-  const getDevList = async() =>{
-    if (!auth?.user?.id_token) return;
-  
-    await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/getSensorBoxModel", {
-      method: "POST",
-       headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${auth.user.id_token}`,
-      }
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("Raw API response:", data);
-        const parsed = typeof data.body === "string" ? JSON.parse(data.body) : data.body;
-        setDevices(parsed);
-      })
-      .catch((err) => console.error(err));
-      return;
-
-  }
-  const addDevUser = async (access) => {
-    // Transform nested access map into array of records
-    // [{ email, Location, DeviceRight: [...] }, ...]
-    const payload = [];
-    for (const user of Object.keys(access || {})) {
-      const locMap = access[user] || {};
-      for (const loc of Object.keys(locMap)) {
-        const rights = locMap[loc] || [];
-        // Skip empty rights: clearing deletes the association, don't include empties
-        if (rights.length > 0) {
-          payload.push({ email: user, Location: loc, DeviceRight: rights });
-        }else{
-          payload.push({ email: user, Location: loc });
-        }
-      }
-    }
-    console.log("AddDevUser:",payload);
+  const signInAndGetFiles = async () => {
     try {
-      return await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/PutUserDevice", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${auth.user.id_token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      console.error("Failed to save user device rights:", err);
-    }
-  };
-  const AddNewIMEIDev = async () => {
-    const newDevice = {
-      DeviceID: BigInt(sensorBoxModel[0]), // convert to number if needed
-      Location: sensorBoxModel[1],
-      Coordinate: sensorBoxModel[2]
-        .split(", ") // assume user types "22.21,113.54"
-        .map((c) => parseFloat(c.trim())),
-    };
-    console.log(newDevice);
-    return await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/putSensorBoxModel", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${auth.user?.id_token}`,
-      },
-      body: JSON.stringify(newDevice),
-    });
-  };
-  useEffect(() => {
-    if (auth.isAuthenticated) {
-      if (auth.user?.profile.email === "natsense00@gmail.com") {
-        console.log("correct user");
-        getDevList();
-        GetDevUser();
-      } else {
-        console.log("not ok");
-      }
-    }
-  }, [auth.isAuthenticated, auth.user?.profile.email]);
-
-  const isAuthenticatingRef = useRef(false);
-
-  const signInAndGetFiles = useCallback(async () => {
-    if (isAuthenticatingRef.current) {
-      return;
-    }
-
-    isAuthenticatingRef.current = true;
-    setDriveFilesError("");
-    setIsLoadingFiles(true);
-
-    try {
-      await initializeMsal();
-
-      let account = msalInstance.getActiveAccount();
-      if (!account) {
-        const [firstAccount] = msalInstance.getAllAccounts();
-        account = firstAccount;
-      }
-
-      if (!account) {
-        const loginResponse = await msalInstance.loginPopup(loginRequest);
-        console.log("Logged in:", loginResponse.account);
-        account = loginResponse.account;
-        msalInstance.setActiveAccount?.(account);
-      }
+      setError("");
+      const loginResponse = await msalInstance.loginPopup(loginRequest);
+      console.log("Logged in:", loginResponse.account);
 
       const tokenResponse = await msalInstance.acquireTokenSilent({
         ...loginRequest,
-        account,
+        account: loginResponse.account,
       });
 
       console.log("Access Token:", tokenResponse.accessToken);
-      await fetchDriveFilesFromGraph(tokenResponse.accessToken);
-      setTokenExchangeResult(tokenResponse);
-    } catch (error) {
-      console.error(error);
-      const code = (error as any)?.errorCode;
-      const message = code === "interaction_in_progress"
-        ? "Complete or close the active Microsoft sign-in popup before starting a new one."
-        : error instanceof Error
-          ? error.message
-          : "Microsoft sign-in failed.";
-      setDriveFilesError(message);
-    } finally {
-      isAuthenticatingRef.current = false;
-      setIsLoadingFiles(false);
-    }
-  }, [fetchDriveFilesFromGraph, initializeMsal]);
 
-  const handleOneDriveSearch = async () => {
-    const accessToken = tokenExchangeResult?.accessToken || tokenExchangeResult?.access_token;
-    if (!accessToken) {
-      setDriveSearchError("Retrieve an access token first.");
-      return;
-    }
+      const { data } = await axios.get(
+        "https://graph.microsoft.com/v1.0/me/drive/root/children",
+        {
+          headers: { Authorization: `Bearer ${tokenResponse.accessToken}` },
+        }
+      );
 
-    const searchTerm = "202602_Amber";
-    const encodedTerm = encodeURIComponent(searchTerm);
-    const url = `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodedTerm}')`;
-
-    try {
-      setIsSearchingDrive(true);
-      setDriveSearchError("");
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setDriveSearchResult(null);
-        setDriveSearchError(data?.error?.message || "Graph search failed.");
-        return;
-      }
-      setDriveSearchResult(data);
-    } catch (error) {
-      setDriveSearchResult(null);
-      setDriveSearchError(error instanceof Error ? error.message : "Unexpected error.");
-    } finally {
-      setIsSearchingDrive(false);
+      setFiles(Array.isArray(data?.value) ? data.value : []);
+    } catch (err) {
+      console.error(err);
+      setFiles([]);
+      setError(err instanceof Error ? err.message : "Microsoft sign-in failed.");
     }
   };
 
   return (
-
-    <div className="page-container" style={{ paddingTop: 24 }}>
-      <div
-        className="brand-header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          padding: "8px 12px",
-        }}
-      >
-        <span className="brand-title">Admin</span>
-        <button
-          className="brand-button button-outline"
-          style={{ marginLeft: "auto" }}   // 👈 pushes button to the right
-          onClick={() => window.location.replace(asset("/login"))}
-        >
-          Back to Dashboard
-        </button>
-        <button
-          className="brand-button button-outline"
-          style={{ marginLeft: 12 }}
-          onClick={signInAndGetFiles}
-          disabled={isLoadingFiles}
-        >
-          {isLoadingFiles ? "Loading OneDrive…" : "Sign in with Microsoft"}
-        </button>
-      </div>
-
-      <div className="panel" style={{ marginTop: 16 }}>
-        <div className="section-title">OneDrive Root Files</div>
-        {driveFilesError && (
-          <p style={{ color: "red", marginBottom: 8 }}>{driveFilesError}</p>
-        )}
-        <button
-          className="brand-button button-outline"
-          onClick={signInAndGetFiles}
-          disabled={isLoadingFiles}
-        >
-          {isLoadingFiles ? "Loading OneDrive…" : "Sign in & Load Files"}
-        </button>
-        {driveFiles.length === 0 && !driveFilesError ? (
-          <p style={{ marginTop: 8 }}>Sign in to see your OneDrive files.</p>
-        ) : (
-          <ul style={{ marginTop: 12 }}>
-            {driveFiles.map((file) => (
-              <li key={file.id}>{file.name}</li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {tokenExchangeResult && (
-        <>
-          <div className="panel" style={{ marginTop: 16 }}>
-            <div className="section-title">Microsoft Token Response</div>
-            <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-              {JSON.stringify(tokenExchangeResult, null, 2)}
-            </pre>
-          </div>
-          <div className="panel" style={{ marginTop: 16 }}>
-            <div className="section-title">OneDrive Search</div>
-            <p>Search term: <strong>202602_Amber</strong></p>
-            <button
-              className="brand-button button-outline"
-              onClick={handleOneDriveSearch}
-              disabled={isSearchingDrive}
-            >
-              {isSearchingDrive ? "Searching…" : "Search OneDrive"}
-            </button>
-            {driveSearchError && (
-              <p style={{ color: "red", marginTop: 8 }}>{driveSearchError}</p>
-            )}
-            {driveSearchResult && (
-              <pre style={{ marginTop: 12, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-                {JSON.stringify(driveSearchResult, null, 2)}
-              </pre>
-            )}
-          </div>
-        </>
+    <div style={{ padding: 24 }}>
+      <h1>OneDrive Files (Personal Account)</h1>
+      <button className="brand-button button-outline" onClick={signInAndGetFiles}>
+        Sign In & Load Files
+      </button>
+      {error && (
+        <p style={{ color: "red", marginTop: 12 }}>
+          {error}
+        </p>
       )}
-    
-      <div className="panel" style={{ marginTop: 16 }}>
-        <div className="section-title">Refresh sdid and dsid</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button className="brand-button button-outline" onClick={Refresh}>Refresh</button>
-        </div>      
-      </div>
-      <div style={{ display: "flex", gap: "16px", marginTop: 16 }}>
-      <div className="panel" style={{flex: 1}}>
-        <div className="section-title">SensorBoxTable</div>
-        <SensorBoxTable devices={devices} />
-      </div>
-      <div className="panel" style={{ flex: 1 , gap: 8 }}>
-          <div className="section-title">Latest Data Dashboard</div>
-          <ThreeTextBoxRow values = {sensorBoxModel} setValues = {setSensorBoxModel}/>
-          <button className="brand-button button-outline" onClick={async() => {await AddNewIMEIDev();await getDevList();}} style={{marginTop: 16}}>Add New IMEI Dev</button>
-        </div>
-      </div>
-      <div className="panel" style={{ marginTop: 16 }}>
-        <div className="section-title">Refresh DevUser</div>
-        <button className="brand-button button-outline" onClick={GetDevUser}>Refresh</button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
-        <AccessManager data = {userDev} onSave = {addDevUser}/>
-        {/* {userDev && (
-          <div>
-            <p>Email: {userDev.email}</p>
-            <p>Location: {userDev.Location}</p>
-            <p>Devices: {userDev.DevList.join(", ")}</p>
-          </div>
-        )} */}
-
-        </div>      
-      </div>
+      <ul style={{ marginTop: 16 }}>
+        {files.map((file) => (
+          <li key={file.id}>{file.name}</li>
+        ))}
+      </ul>
     </div>
   );
 }
