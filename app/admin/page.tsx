@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import axios from "axios";
-import { msalInstance, loginRequest } from "../authConfig";
+import { msalInstance, loginRequest, initializeMsal } from "../authConfig";
 
 type DriveFile = {
   id: string;
@@ -16,6 +16,7 @@ export default function MicrosoftLoginPage() {
   const signInAndGetFiles = async () => {
     try {
       setError("");
+      await initializeMsal();
       const loginResponse = await msalInstance.loginPopup(loginRequest);
       console.log("Logged in:", loginResponse.account);
 
