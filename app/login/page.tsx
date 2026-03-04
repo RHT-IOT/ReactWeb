@@ -18,7 +18,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 
 // Center text plugin is provided by shared DashboardGauges; local plugin removed.
 
-function SelectIMEIMulti({ IMEI, setValues, setcurrdev, setdevarr }) {
+function SelectIMEIMulti({ IMEI, selectedValues, setValues, setcurrdev, setdevarr }) {
   
           console.log(IMEI);
   const handleMultiSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -26,10 +26,22 @@ function SelectIMEIMulti({ IMEI, setValues, setcurrdev, setdevarr }) {
     setValues(selected);
     setcurrdev([]);
     setdevarr([]);
+    if (typeof window !== 'undefined') {
+      try {
+        if (selected.length > 0) localStorage.setItem('selected-imei', String(selected[0]));
+        else localStorage.removeItem('selected-imei');
+      } catch {}
+    }
   };
   const entries = Array.isArray(IMEI) ? IMEI : [];
   return (
-    <Form.Select multiple className="brand-select" aria-label="Select IMEIs" onChange={handleMultiSelect}>
+    <Form.Select
+      multiple
+      className="brand-select"
+      aria-label="Select IMEIs"
+      value={selectedValues}
+      onChange={handleMultiSelect}
+    >
       {entries.map((opt, index) => {
         const label = typeof opt === 'string' ? opt : (opt?.Location ?? String(opt?.DeviceID ?? ''));
         const value = typeof opt === 'string' ? opt : String(opt?.DeviceID ?? '');
@@ -372,6 +384,20 @@ function LoginApp() {
     callApi(auth.user?.profile.email);
   }, [auth.isAuthenticated, auth.user?.access_token,auth.user?.profile.email,auth.user?.id_token]);
 
+  // Preselect the IAQ IMEI when coming from /IAQ
+  useEffect(() => {
+    if (IMEIs && IMEIs.length > 0) return;
+    if (!IMEI_ARR || IMEI_ARR.length === 0) return;
+    if (typeof window === 'undefined') return;
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem('selected-imei');
+    } catch {}
+    if (!stored) return;
+    const exists = IMEI_ARR.some((it: any) => String(it?.DeviceID ?? '') === String(stored));
+    if (exists) setIMEIs([String(stored)]);
+  }, [IMEI_ARR, IMEIs]);
+
   // Update allowed device types when IMEIs change
   useEffect(() => {
     if (!IMEIs || IMEIs.length === 0) { setAllowedDeviceTypes([]); return; }
@@ -656,6 +682,10 @@ function LoginApp() {
           <Image src={asset('/chart.png')} alt="Monitor" width={36} height={36}/>
           <span className="nav-label">Monitor</span>
         </button>
+        <a className="brand-button" href={asset('/IAQ')}>
+          <Image src={asset('/dashboard.png')} alt="IAQ" width={36} height={36}/>
+          <span className="nav-label">IAQ Dashboard</span>
+        </a>
       </nav>
 
       <div className="content-shell">
@@ -676,7 +706,7 @@ function LoginApp() {
                   <div className="section-title">Selection</div>
                   <p>Locations</p>
                   <div className="control-row">
-                    <SelectIMEIMulti IMEI={IMEI_ARR} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
+                    <SelectIMEIMulti IMEI={IMEI_ARR} selectedValues={IMEIs} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
                   </div>
                   {IMEIs && IMEIs.length > 0 && (
                     <>
@@ -728,7 +758,7 @@ function LoginApp() {
                   <div className="section-title">Filter</div>
                   <p>Locations</p>
                   <div className="control-row">
-                    <SelectIMEIMulti IMEI={IMEI_ARR} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
+                    <SelectIMEIMulti IMEI={IMEI_ARR} selectedValues={IMEIs} setValues={setIMEIs} setcurrdev={setDevice} setdevarr={setDeviceType} />
                   </div>
                   {IMEIs && IMEIs.length > 0 && (
                     <>

@@ -99,7 +99,7 @@ export function createLatestDpPoller({
   IMEI,
   idToken,
   getIdToken,
-  intervalMs = 5 * 60 * 1000,
+  intervalMs = 60 * 1000,
   callback,
   errorCallback,
 }: {

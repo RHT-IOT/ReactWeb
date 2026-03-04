@@ -1,9 +1,22 @@
+
 "use client";
 
 import { useAuth } from "react-oidc-context";
 import { useEffect, useState,useId } from "react";
 import { asset } from "../lib/asset";
-
+// Redirects to Microsoft OAuth2 authorize endpoint (customized)
+function redirectToMicrosoftSignIn(tenant, clientId, redirectUri, scope, state) {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    response_type: "code",
+    redirect_uri: redirectUri,
+    response_mode: "query",
+    scope: scope,
+    state: state,
+  });
+  const url = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`;
+  window.location.href = url;
+}
 // Cast to any to extend BigInt prototype for JSON serialization
 (BigInt.prototype as any).toJSON = function() {
   return this.toString();
@@ -240,6 +253,14 @@ export default function AdminPage() {
   const[devices, setDevices] = useState();
   const[userDev, setUserDev] = useState();
   const [sensorBoxModel, setSensorBoxModel] = useState(["", "", ""]);
+  const [tokenExchangeResult, setTokenExchangeResult] = useState(null);
+
+  // Microsoft OAuth config (customized)
+  const MS_TENANT = "consumers";
+  const MS_CLIENT_ID = "e2f751a9-87fe-4a89-982d-d73b8b8c2f19";
+  const MS_REDIRECT_URI = "https://rht-iot.github.io/ReactWeb/admin";
+  const MS_SCOPE = "Files.ReadWrite offline_access";
+  const MS_STATE = "12345";
 
   const refresh_send = {
     Records: [{ eventName: "REFRESH" }]
@@ -351,6 +372,45 @@ export default function AdminPage() {
       }
     }
   }, [auth.isAuthenticated, auth.user?.profile.email]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const authCode = params.get("code");
+    const returningState = params.get("state");
+    if (!authCode) return;
+    if (returningState && returningState !== MS_STATE) {
+      console.warn("State mismatch, aborting token exchange.");
+      return;
+    }
+
+    const exchangeToken = async () => {
+      try {
+        const body = new URLSearchParams({
+          client_id: MS_CLIENT_ID,
+          scope: MS_SCOPE,
+          code: authCode,
+          redirect_uri: MS_REDIRECT_URI,
+          grant_type: "authorization_code",
+        });
+        const response = await fetch("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: body.toString(),
+        });
+        const json = await response.json();
+        setTokenExchangeResult(json);
+      } catch (error) {
+        console.error("Token exchange failed:", error);
+      } finally {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    };
+
+    exchangeToken();
+  }, [MS_CLIENT_ID, MS_REDIRECT_URI, MS_SCOPE, MS_STATE]);
   const [firstName, setFirstName] = useState('');
 
   return (
@@ -372,7 +432,23 @@ export default function AdminPage() {
         >
           Back to Dashboard
         </button>
+        <button
+          className="brand-button button-outline"
+          style={{ marginLeft: 12 }}
+          onClick={() => redirectToMicrosoftSignIn(MS_TENANT, MS_CLIENT_ID, MS_REDIRECT_URI, MS_SCOPE, MS_STATE)}
+        >
+          Sign in with Microsoft
+        </button>
       </div>
+
+      {tokenExchangeResult && (
+        <div className="panel" style={{ marginTop: 16 }}>
+          <div className="section-title">Microsoft Token Response</div>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+            {JSON.stringify(tokenExchangeResult, null, 2)}
+          </pre>
+        </div>
+      )}
     
       <div className="panel" style={{ marginTop: 16 }}>
         <div className="section-title">Refresh sdid and dsid</div>

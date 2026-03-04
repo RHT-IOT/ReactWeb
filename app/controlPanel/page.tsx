@@ -4,6 +4,7 @@ import { useAuth } from "react-oidc-context";
 import { useEffect, useMemo, useState } from "react";
 import { getIMEIList, getLatestDP } from "../lib/aws";
 import { AirConPanel } from "./AirConPanel";
+import { AirPurifierPanel } from "./EC490";
 
 import { asset } from "../lib/asset";
 export default function AdminPage() {
@@ -41,7 +42,10 @@ export default function AdminPage() {
     return types;
   }, [allowedByDeviceId, selectedIMEI, cpNames]);
 const hasAirCon = useMemo(() => {
-    return deviceTypes.some((dt) => dt?.toLowerCase() === "aircon");
+    return deviceTypes.some((dt) => dt?.toLowerCase().includes("aircon"));
+  }, [deviceTypes]);
+  const hasEC490 = useMemo(() => {
+    return deviceTypes.some((dt) => (dt?.toLowerCase().includes("ec490")||dt?.toLowerCase().includes("490ec")));
   }, [deviceTypes]);
   const dataTypes = useMemo(() => {
     if (!selectedDeviceType) return [] as string[];
@@ -227,11 +231,30 @@ const hasAirCon = useMemo(() => {
   async function sendAirconIR(action: string) {
     if (!auth?.user?.id_token || !selectedIMEI) return;
     // Find the canonical AirCon device type string (case-sensitive as provided)
-    const airconDeviceType = deviceTypes.find((dt) => dt?.toLowerCase() === "aircon");
+    const airconDeviceType = deviceTypes.find((dt) => dt?.toLowerCase().includes("aircon"));
     if (!airconDeviceType) return;
     const irValue = deriveAirconIrValue(action);
     // Send directly with override to avoid stale state reads
     await sendCpValue(airconDeviceType, "Send_IR", irValue);
+  }
+  async function ec490_on_off(action: string) {
+    if (!auth?.user?.id_token || !selectedIMEI) return;
+    // Find the canonical AirCon device type string (case-sensitive as provided)
+    const airconDeviceType = deviceTypes.find((dt) => (dt?.toLowerCase().includes("ec490")||dt?.toLowerCase().includes("490ec")));
+    if (!airconDeviceType) return;
+    if(action === "POWER_ON")    await sendCpValue(airconDeviceType, "On_Off", "1");
+    if(action === "POWER_OFF") await sendCpValue(airconDeviceType, "On_Off", "0");
+    
+    // Send directly with override to avoid stale state reads
+  }
+  async function ec490_fan_speed(action: number) {
+    if (!auth?.user?.id_token || !selectedIMEI) return;
+    // Find the canonical AirCon device type string (case-sensitive as provided)
+    const airconDeviceType = deviceTypes.find((dt) =>( dt?.toLowerCase().includes("ec490") || dt?.toLowerCase().includes("490ec")));
+    if (!airconDeviceType) return;
+    sendCpValue(airconDeviceType, "Fan_Speed", String(action));
+    
+    // Send directly with override to avoid stale state reads
   }
 
   // Prefill inputs from latest DP for the selected device without overriding user-entered values
@@ -313,6 +336,25 @@ const hasAirCon = useMemo(() => {
               onPowerToggle={(isOn) => sendAirconIR(!isOn ? "POWER_ON" : "POWER_OFF")}
               onLowTempClick={() => sendAirconIR("TEMP_24")}
               onHighTempClick={() => sendAirconIR("TEMP_26")}
+            />
+          </div>
+        </div>
+      )} {hasEC490 && (
+        <div className="panel" style={{ marginTop: 16 }}>
+          <div className="section-title">EC490 Control</div>
+          <div className="control-row" style={{ gap: 16 }}>
+            {/* Show case label for the two specific IMEIs */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, opacity: 0.7 }}>
+                {selectedIMEI === "866597079355002" ? "Case A" : selectedIMEI === "861556077809126" ? "Case B" : "Generic"}
+              </span>
+            </div>
+            <AirPurifierPanel
+              onPowerOn={() => ec490_on_off("POWER_ON")}
+              onPowerOff={() => ec490_on_off("POWER_OFF")}
+              onFanSpeedIncrease={(newSpeed) => ec490_fan_speed(newSpeed)}
+              onFanSpeedDecrease={(newSpeed) => ec490_fan_speed(newSpeed)}
+              latestData={latestMap[deviceTypes.find((dt) => (dt?.toLowerCase().includes("490ec") || dt?.toLowerCase().includes("ec490"))) ]}
             />
           </div>
         </div>
