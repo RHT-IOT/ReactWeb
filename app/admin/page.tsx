@@ -4,15 +4,34 @@ import { useAuth } from "react-oidc-context";
 import { useEffect, useState } from "react";
 import { asset } from "../lib/asset";
 
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
+function getApiUrl(path: string) {
+  return API_BASE_URL ? `${API_BASE_URL}${path}` : `${BASE_PATH}${path}`;
+}
+
+async function parseApiResponse(response: Response) {
+  const raw = await response.text();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(
+      "Backend returned non-JSON response. On GitHub Pages, set NEXT_PUBLIC_API_BASE_URL to a deployed server that hosts /api routes."
+    );
+  }
+}
+
 // Request a device code via POST; open verification page in a new tab and return message/device_code
 async function redirectToMicrosoftSignIn(tenant, clientId, onMessage, onDeviceCode) {
   try {
-    const res = await fetch("/api/devicecode", {
+    const res = await fetch(getApiUrl("/api/devicecode"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tenant, clientId, scope: "User.Read Files.Read" }),
     });
-    const json = await res.json();
+    const json = await parseApiResponse(res);
 
     let payload = json;
     if (typeof json?.body === "string") {
@@ -468,7 +487,7 @@ export default function AdminPage() {
       inFlight = true;
 
       try {
-        const response = await fetch("/api/device-token", {
+        const response = await fetch(getApiUrl("/api/device-token"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -478,7 +497,7 @@ export default function AdminPage() {
           }),
         });
 
-        const json = await response.json();
+        const json = await parseApiResponse(response);
         let payload = json;
         if (typeof json?.body === "string") {
           try {
@@ -533,7 +552,7 @@ export default function AdminPage() {
       setIsTriggeringWebhook(true);
       setTriggerStatus("");
 
-      const response = await fetch("/api/trigger-webhook", {
+      const response = await fetch(getApiUrl("/api/trigger-webhook"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
