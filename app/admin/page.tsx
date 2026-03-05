@@ -6,6 +6,9 @@ import { asset } from "../lib/asset";
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
+const AWS_MICROSOFT_LOGIN_URL = "https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/microsoft_login";
+const AWS_MS_TOKEN_URL = "https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/ms_token";
+const AWS_DIFY_TRIG_URL = "https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/dify_trig";
 
 function getApiUrl(path: string) {
   return API_BASE_URL ? `${API_BASE_URL}${path}` : `${BASE_PATH}${path}`;
@@ -18,18 +21,27 @@ async function parseApiResponse(response: Response) {
     return JSON.parse(raw);
   } catch {
     throw new Error(
-      "Backend returned non-JSON response. On GitHub Pages, set NEXT_PUBLIC_API_BASE_URL to a deployed server that hosts /api routes."
+      "Backend returned non-JSON response."
     );
   }
 }
 
 // Request a device code via POST; open verification page in a new tab and return message/device_code
-async function redirectToMicrosoftSignIn(tenant, clientId, onMessage, onDeviceCode) {
+async function redirectToMicrosoftSignIn(tenant, clientId, awsAccessToken, onMessage, onDeviceCode) {
+  if (!awsAccessToken) {
+    if (typeof onMessage === "function") {
+      onMessage("AWS access token is missing. Please sign in first.");
+    }
+    return;
+  }
+
   try {
-    const res = await fetch(getApiUrl("/api/devicecode"), {
+    const res = await fetch(AWS_MICROSOFT_LOGIN_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenant, clientId, scope: "User.Read Files.Read" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${awsAccessToken}`,
+      }
     });
     const json = await parseApiResponse(res);
 
@@ -308,6 +320,7 @@ function SensorBoxTable({ devices }) {
 // Parent component
 export default function AdminPage() {
   const auth = useAuth();
+  const awsAccessToken = auth.user?.id_token || "";
 
   const[devices, setDevices] = useState();
   const[userDev, setUserDev] = useState();
@@ -341,6 +354,84 @@ export default function AdminPage() {
       body: JSON.stringify(refresh_send),
     });
   };
+  const microsoftLogin = async () => {
+    if (!awsAccessToken) {
+      setMicrosoftLoginMessage("AWS access token is missing. Please sign in first.");
+      return;
+    }
+
+    try {
+      setTokenExchangeResult(null);
+      setDeviceCodeForPolling("");
+      setIsTokenPolling(false);
+
+      const response = await fetch(AWS_MICROSOFT_LOGIN_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${awsAccessToken}`,
+        }
+      });
+
+      const json = await parseApiResponse(response);
+      let payload = json;
+      if (typeof json?.body === "string") {
+        try {
+          payload = JSON.parse(json.body);
+        } catch {
+          payload = json;
+        }
+      } else if (json?.body && typeof json.body === "object") {
+        payload = json.body;
+      }
+
+      const messageFromBody =
+        payload?.message ||
+        (() => {
+          if (typeof json?.body !== "string") return "";
+          try {
+            return JSON.parse(json.body)?.message || "";
+          } catch {
+            return "";
+          }
+        })();
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error_description ||
+            payload?.error?.message ||
+            json?.error_description ||
+            "Device code request failed"
+        );
+      }
+
+      if (messageFromBody) {
+        setMicrosoftLoginMessage(messageFromBody);
+      }
+
+      if (payload?.device_code) {
+        setDeviceCodeForPolling(payload.device_code);
+        setIsTokenPolling(true);
+      }
+
+      const target = payload?.verification_uri_complete || payload?.verification_uri;
+      if (target) {
+        window.open(target, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      setMicrosoftLoginMessage(error instanceof Error ? error.message : "Device code request failed");
+    }
+  };
+  // const difyTrig = () => {
+  //   return fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/dify_trig", {
+  //     method: "POST",
+  //     headers: {
+  //       "Content-Type": "application/json",
+  //       "Authorization": `Bearer ${auth.user?.id_token}`,
+  //     },
+  //     body: JSON.stringify(refresh_send),
+  //   });
+  // };
   const GetDevUser = async() => {
      await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/showUserDevice", {
       method: "POST",
@@ -487,17 +578,19 @@ export default function AdminPage() {
       inFlight = true;
 
       try {
-        const response = await fetch(getApiUrl("/api/device-token"), {
+        const response = await fetch(AWS_MS_TOKEN_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${awsAccessToken}`,
+          },
           body: JSON.stringify({
-            tenant: MS_TENANT,
-            clientId: MS_CLIENT_ID,
-            deviceCode: deviceCodeForPolling,
+            "device_code": deviceCodeForPolling
           }),
         });
 
         const json = await parseApiResponse(response);
+        const awsStatusCode = typeof json?.statusCode === "number" ? json.statusCode : response.status;
         let payload = json;
         if (typeof json?.body === "string") {
           try {
@@ -508,10 +601,10 @@ export default function AdminPage() {
         } else if (json?.body && typeof json.body === "object") {
           payload = json.body;
         }
-
-        if (response.ok) {
+        
+        if (awsStatusCode === 200) {
           setTokenExchangeResult(payload);
-          setMicrosoftLoginMessage("Authentication completed. Access token received.");
+          // setMicrosoftLoginMessage("Authentication completed. Access token received.");
           setIsTokenPolling(false);
           return;
         }
@@ -534,7 +627,7 @@ export default function AdminPage() {
     pollToken();
     const timer = window.setInterval(pollToken, 5000);
     return () => window.clearInterval(timer);
-  }, [MS_CLIENT_ID, MS_TENANT, deviceCodeForPolling, isTokenPolling]);
+  }, [MS_CLIENT_ID, MS_TENANT, awsAccessToken, deviceCodeForPolling, isTokenPolling]);
 
   const handleTriggerWebhook = async () => {
     const accessToken = tokenExchangeResult?.access_token || tokenExchangeResult?.accessToken;
@@ -552,10 +645,11 @@ export default function AdminPage() {
       setIsTriggeringWebhook(true);
       setTriggerStatus("");
 
-      const response = await fetch(getApiUrl("/api/trigger-webhook"), {
+      const response = await fetch(AWS_DIFY_TRIG_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${awsAccessToken}`,
         },
         body: JSON.stringify({
           access_token: accessToken,
@@ -598,20 +692,7 @@ export default function AdminPage() {
         </button>
         <button
           className="brand-button button-outline"
-          onClick={() => {
-            setTokenExchangeResult(null);
-            setDeviceCodeForPolling("");
-            setIsTokenPolling(false);
-            redirectToMicrosoftSignIn(
-              MS_TENANT,
-              MS_CLIENT_ID,
-              setMicrosoftLoginMessage,
-              (deviceCode) => {
-                setDeviceCodeForPolling(deviceCode);
-                setIsTokenPolling(true);
-              }
-            );
-          }}
+          onClick={microsoftLogin}
         >
           Sign in with Microsoft
         </button>
