@@ -1,4 +1,3 @@
-import { PublicClientApplication } from "@azure/msal-browser";
 export type OidcConfig = {
   authority: string;
   client_id: string;
@@ -53,26 +52,4 @@ export function buildLogoutUrl(config: OidcConfig): string | null {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const logoutUri = `${origin}${BASE_PATH}/`;
   return `${domain}/logout?client_id=${config.client_id}&logout_uri=${encodeURIComponent(logoutUri)}`;
-}
-
-export const msalConfig = {
-  auth: {
-    clientId: "231cd4ed-db1c-413d-ab9c-643a61712ee8", // Application (client) ID
-    authority: "https://login.microsoftonline.com/6cb89794-7b66-472d-b0b1-09ed68dafe30", // Tenant ID
-    redirectUri: "https://rht-iot.github.io/ReactWeb/admin", // must match Azure portal
-  }
-};
-
-export const loginRequest = {
-  scopes: ["User.Read", "Files.ReadWrite"] // Graph scopes
-};
-
-export const msalInstance = new PublicClientApplication(msalConfig);
-
-let msalInitPromise: Promise<void> | null = null;
-export function initializeMsal() {
-  if (!msalInitPromise) {
-    msalInitPromise = msalInstance.initialize();
-  }
-  return msalInitPromise;
 }
