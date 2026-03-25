@@ -1,49 +1,92 @@
-import requests, time
+import urllib.request
+import urllib.parse
+import urllib.error
+import ssl
+import json
 
-tenant = "consumers"   # personal/family accounts
-client_id = "ac9f3d86-56e6-4e42-8fd2-4f6c07fc08b9"
 
-# Step 1: Get device code
-resp = requests.post(
-    f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/devicecode",
-    data={
-        "client_id": client_id,
-        "scope": "User.Read Files.Read"
-    }
-)
+def extract_file_url(input_data):
+    if isinstance(input_data, str):
+        return input_data
+    if isinstance(input_data, dict):
+        files = input_data.get("files", [])
+        if files and isinstance(files[0], dict):
+            return files[0].get("url")
+        return None
+    if isinstance(input_data, list):
+        if input_data and isinstance(input_data[0], dict):
+            return input_data[0].get("url")
+        return None
+    return None
 
-device_code = resp.json()
 
-print("Go to:", device_code.get("verification_uri"))
-print("Enter code:", device_code.get("user_code"))
-print(device_code.get("message"))
-
-# Step 2: Poll for token until success
-while True:
-    token_resp = requests.post(
-        f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
-        data={
-            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            "client_id": client_id,
-            "device_code": device_code["device_code"]
-        }
+def download_file_bytes(file_url: str, ssl_context):
+    req = urllib.request.Request(
+        file_url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "*/*",
+        },
     )
-    result = token_resp.json()
-    if "access_token" in result:
-        print("Access token received!")
-        access_token = result["access_token"]
-        break
-    elif result.get("error") == "authorization_pending":
-        # wait for user to finish sign-in
-        time.sleep(device_code.get("interval", 5))
-    else:
-        print("Error:", result)
-        exit()
+    try:
+        with urllib.request.urlopen(req, context=ssl_context) as response:
+            return response.read()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(
+            json.dumps(
+                {
+                    "stage": "download_source_file",
+                    "status": e.code,
+                    "reason": e.reason,
+                    "url": file_url,
+                    "hint": "Source URL denied access (often expired signed URL or host policy). Generate a fresh URL and retry.",
+                    "response_body": body,
+                }
+            )
+        ) from e
 
-# Step 3: Use token to list OneDrive files
-files_resp = requests.get(
-    "https://graph.microsoft.com/v1.0/me/drive/root/children",
-    headers={"Authorization": f"Bearer {access_token}"}
-)
-print("Your OneDrive files/folders:")
-print(files_resp.json())
+
+def main(input, filename: str, ACCESS_TOKEN: str, folder_id: str = ""):
+    if not filename.lower().endswith(".xlsx"):
+        filename = filename + ".xlsx"
+
+    file_url = extract_file_url(input)
+    if not file_url:
+        return {"error": "No file URL found in input"}
+
+    ssl_context = ssl._create_unverified_context()
+
+    try:
+        file_bytes = download_file_bytes(file_url, ssl_context)
+    except RuntimeError as e:
+        try:
+            return {"error": "Source file download failed", **json.loads(str(e))}
+        except json.JSONDecodeError:
+            return {"error": "Source file download failed", "details": str(e)}
+
+    safe_name = urllib.parse.quote(filename, safe="")
+    if folder_id:
+        upload_url = f"https://graph.microsoft.com/v1.0/me/drive/items/{folder_id}:/{safe_name}:/content"
+    else:
+        upload_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{safe_name}:/content"
+
+
+    req = urllib.request.Request(upload_url, data=file_bytes, method="PUT")
+    req.add_header("Authorization", f"Bearer {ACCESS_TOKEN}")
+    req.add_header("Content-Type", "application/octet-stream")
+
+    try:
+        with urllib.request.urlopen(req, context=ssl_context) as resp:
+            result = resp.read().decode("utf-8")
+            return {"message": f"File {filename} uploaded", "onedrive_response": json.loads(result)}
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore")
+        return {
+            "error": "Graph upload failed",
+            "status": e.code,
+            "reason": e.reason,
+            "response_body": err_body,
+            "www_authenticate": e.headers.get("WWW-Authenticate"),
+            "request_url": upload_url
+        }

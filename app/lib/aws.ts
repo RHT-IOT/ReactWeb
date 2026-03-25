@@ -95,6 +95,19 @@ export async function getDPFromTime(
   return { deviceTypes: temp.deviceTypes || [], items: temp.items || [] };
 }
 
+export async function getCSV(
+  IMEI: string,
+  startDateTime: string,
+  endDateTime: string,
+  idToken: string,
+  timeInterval: string,
+  getIdToken?: () => Promise<string>
+): Promise<{ url: string[] }> {
+  const res = await fetchWithAuthRetry("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/csv", { IMEI, startDateTime, endDateTime, timeInterval }, idToken, getIdToken);
+  const data = await res.json();
+
+  return { url: data || []};
+}
 export function createLatestDpPoller({
   IMEI,
   idToken,

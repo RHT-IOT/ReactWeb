@@ -6,7 +6,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import { Line } from 'react-chartjs-2';
 import { asset } from "../lib/asset";
 import { LatestDashboard } from "../components/DashboardGauges";
-import { getIMEIList, getLatestDP, getDPFromTime, getIMEIOffline } from "../lib/aws";
+import { getIMEIList, getLatestDP, getDPFromTime, getIMEIOffline, getCSV as getCSVFromApi} from "../lib/aws";
 import 'chartjs-adapter-date-fns';
 import DateTimeRangePickerValue from "../datepicker";
 import dayjs from "dayjs";
@@ -238,6 +238,7 @@ function LoginApp() {
   const [allowedByDeviceId, setAllowedByDeviceId] = useState<Record<string, string[]>>({});
   const [allowedDeviceTypes, setAllowedDeviceTypes] = useState<string[]>([]);
   const pollerRef = useRef<any>(null);
+  const exportingCsvRef = useRef(false);
   const [selectedDevicesByImei, setSelectedDevicesByImei] = useState<Record<string, string[]>>({});
 
   // Theme state
@@ -550,6 +551,48 @@ function LoginApp() {
     }
   };
 
+  const handleGetCSV = async () => {
+    if (!IMEIs || IMEIs.length === 0 || !auth.user?.id_token) return;
+    if (exportingCsvRef.current) return;
+    exportingCsvRef.current = true;
+    console.log("IMEIs in csv:", IMEIs);
+    try {
+      const results = await Promise.all(
+        IMEIs.map(imei => getCSVFromApi(imei, startDateTime, endDateTime, auth.user!.id_token as string, timeInterval))
+      );
+      console.log("CSV API results:", results);
+      const urls = results.flatMap((result: any) => {
+        if (typeof result === 'string') return [result];
+        if (Array.isArray(result?.url)) return result.url.filter((u: any) => typeof u === 'string');
+        if (typeof result?.url === 'string') return [result.url];
+        return [];
+      });
+
+      if (urls.length === 0) {
+        alert('No CSV URL returned from server.');
+        return;
+      }
+
+      const uniqueUrls = Array.from(new Set(urls));
+      const targetUrls = IMEIs.length > 1 ? uniqueUrls : uniqueUrls.slice(0, 1);
+
+      targetUrls.forEach((url) => {
+        const opened = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          window.location.href = url;
+        }
+      });
+
+      if (IMEIs.length > 1 && targetUrls.length < IMEIs.length) {
+        alert(`Requested ${IMEIs.length} IMEIs, but received ${targetUrls.length} CSV link(s).`);
+      }
+    } catch (err) {
+      console.error("getCSV error:", err);
+      alert('Failed to export CSV. Please try again.');
+    } finally {
+      exportingCsvRef.current = false;
+    }
+  };
   // Manual auto-refresh: start only when user clicks "Get New Data"
   const startAutoRefresh = async () => {
     if (!auth.isAuthenticated || !IMEIs || IMEIs.length === 0 || !auth.user?.id_token) return;
@@ -813,7 +856,8 @@ function LoginApp() {
                   <div className="panel" style={{ marginTop: 16 }}>
                     <div className="section-title">Export CSV</div>
                     <div className="control-row">
-                      <ExportCSVButton data={timeSeriesData} filename={(IMEIs && IMEIs.length ? IMEIs.join('-') : 'IMEI') + "_" + startDateTime.split('.')[0].replace('T', ' ') + "_to_" + endDateTime.split('.')[0].replace('T', ' ') + ".csv"} />
+                        <button className="brand-button button-secondary" onClick={handleGetCSV}>Export CSV</button>
+                      {/* <ExportCSVButton data={timeSeriesData} filename={(IMEIs && IMEIs.length ? IMEIs.join('-') : 'IMEI') + "_" + startDateTime.split('.')[0].replace('T', ' ') + "_to_" + endDateTime.split('.')[0].replace('T', ' ') + ".csv"} /> */}
                     </div>
                   </div>
                 </div>
