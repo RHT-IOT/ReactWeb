@@ -729,6 +729,10 @@ function LoginApp() {
           <Image src={asset('/dashboard.png')} alt="IAQ" width={36} height={36}/>
           <span className="nav-label">IAQ Dashboard</span>
         </a>
+        <a className="brand-button" href={asset('/2d')}>
+          <Image src={asset('/dashboard.png')} alt="IAQ" width={36} height={36}/>
+          <span className="nav-label">2D map</span>
+        </a>
       </nav>
 
       <div className="content-shell">
