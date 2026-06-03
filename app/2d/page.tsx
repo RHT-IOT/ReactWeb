@@ -327,15 +327,29 @@ export default function TwoDPage() {
     try {
       const idToken = auth?.user?.id_token || "";
       let res = await make(idToken);
+      let json: any = null;
       if ((res.status === 401 || res.status === 403) && typeof getIdTokenAsync === "function") {
         const newTk = await getIdTokenAsync();
         if (newTk) res = await make(newTk);
       }
+      // if server rejects Authorization header format, try fallback header
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(`Request failed ${res.status} ${txt}`);
+        const msg = String(txt || "");
+        // look for the specific parser error the backend may return
+        if (msg.includes("Invalid key=value pair") || msg.includes("Invalid key=value")) {
+          // retry with alternative header `x-access-token` (some backends accept this)
+          const altRes = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json", "x-access-token": idToken } });
+          if (!altRes.ok) {
+            const altTxt = await altRes.text().catch(() => "");
+            throw new Error(`Request failed ${altRes.status} ${altTxt}`);
+          }
+          json = await altRes.json();
+        } else {
+          throw new Error(`Request failed ${res.status} ${txt}`);
+        }
       }
-      const json = await res.json();
+      if (json == null) json = await res.json().catch(() => ({}));
       // backend returns { body: "{...}" }
       let bodyObj: any = json;
       if (json && typeof json.body === "string") {
