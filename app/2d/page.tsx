@@ -322,34 +322,20 @@ export default function TwoDPage() {
     if (!heatmapRef.current) return;
     const url = "https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/odor_map";
     const make = async (tk: string) =>
-      fetch(url, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` } });
+      fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` }, body: JSON.stringify({}) });
 
     try {
       const idToken = auth?.user?.id_token || "";
       let res = await make(idToken);
-      let json: any = null;
       if ((res.status === 401 || res.status === 403) && typeof getIdTokenAsync === "function") {
         const newTk = await getIdTokenAsync();
         if (newTk) res = await make(newTk);
       }
-      // if server rejects Authorization header format, try fallback header
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        const msg = String(txt || "");
-        // look for the specific parser error the backend may return
-        if (msg.includes("Invalid key=value pair") || msg.includes("Invalid key=value")) {
-          // retry with alternative header `x-access-token` (some backends accept this)
-          const altRes = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json", "x-access-token": idToken } });
-          if (!altRes.ok) {
-            const altTxt = await altRes.text().catch(() => "");
-            throw new Error(`Request failed ${altRes.status} ${altTxt}`);
-          }
-          json = await altRes.json();
-        } else {
-          throw new Error(`Request failed ${res.status} ${txt}`);
-        }
+        throw new Error(`Request failed ${res.status} ${txt}`);
       }
-      if (json == null) json = await res.json().catch(() => ({}));
+      const json = await res.json();
       // backend returns { body: "{...}" }
       let bodyObj: any = json;
       if (json && typeof json.body === "string") {
