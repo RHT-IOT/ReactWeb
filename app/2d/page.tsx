@@ -110,7 +110,7 @@ async function fetchHeatmapData(): Promise<HeatPoint[]> {
   // TODO: Replace this with your real endpoint when ready.
   if (!HEATMAP_API_ENDPOINT) {
     // default to generating around the provided center (Guangzhou coordinates)
-    return generateRandomHeatmap(113.50978, 22.73725, 30, 0.02);
+    return generateRainfallHeatmap(113.50978, 22.73725, 80, 1, 3, 120);
   }
 
   const response = await fetch(HEATMAP_API_ENDPOINT, {
@@ -126,16 +126,64 @@ async function fetchHeatmapData(): Promise<HeatPoint[]> {
   return data;
 }
 
-function generateRandomHeatmap(centerLng: number, centerLat: number, num = 30, spread = 0.02): HeatPoint[] {
+function generateRainfallHeatmap(
+  centerLng: number,
+  centerLat: number,
+  num = 100,
+  radiusKm = 1,
+  clusters = 3,
+  maxCount = 120
+): HeatPoint[] {
+  // Convert km offsets to degrees at the given latitude
+  const latKmToDeg = 1 / 111.0; // ~111km per degree latitude
+  const latDegPerKm = latKmToDeg;
+  const lngDegPerKm = 1 / (111.320 * Math.cos((centerLat * Math.PI) / 180));
+
+  // helper: sample a normal(0,1) via Box-Muller
+  function normalStd(): number {
+    let u = 0,
+      v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  }
+
+  // generate cluster centers uniformly within the radius
+  const clusterCenters: { lng: number; lat: number; sigmaKm: number }[] = [];
+  for (let c = 0; c < clusters; c++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = radiusKm * Math.sqrt(Math.random());
+    const clng = centerLng + Math.cos(angle) * r * lngDegPerKm;
+    const clat = centerLat + Math.sin(angle) * r * latDegPerKm;
+    // sigma controls cluster tightness (smaller = tighter)
+    const sigmaKm = Math.max(0.05, radiusKm * (0.08 + Math.random() * 0.18));
+    clusterCenters.push({ lng: clng, lat: clat, sigmaKm });
+  }
+
   const points: HeatPoint[] = [];
   for (let i = 0; i < num; i++) {
-    // random offset within +/- spread
-    const lng = centerLng + (Math.random() - 0.5) * spread * 2;
-    const lat = centerLat + (Math.random() - 0.5) * spread * 2;
-    // concentration between 5 and 100 (skewed)
-    const count = Math.floor(5 + Math.pow(Math.random(), 1.5) * 95);
-    points.push({ lng, lat, count });
+    // choose a cluster with slight bias toward earlier ones
+    const ci = Math.floor(Math.pow(Math.random(), 0.8) * clusters);
+    const cluster = clusterCenters[Math.min(ci, clusters - 1)];
+
+    // sample offset in km from cluster center using normal distribution
+    const dxKm = normalStd() * cluster.sigmaKm;
+    const dyKm = normalStd() * cluster.sigmaKm;
+
+    const lng = cluster.lng + dxKm * lngDegPerKm;
+    const lat = cluster.lat + dyKm * latDegPerKm;
+
+    // distance from cluster center in km (approx)
+    const distKm = Math.sqrt(dxKm * dxKm + dyKm * dyKm);
+
+    // intensity decays with distance; add random multiplier for realism
+    const intensityFactor = Math.exp(-(distKm * distKm) / (2 * cluster.sigmaKm * cluster.sigmaKm));
+    const randMul = 0.6 + Math.random() * 1.2; // 0.6 - 1.8
+    const raw = Math.max(1, Math.round(maxCount * intensityFactor * randMul));
+
+    points.push({ lng, lat, count: raw });
   }
+
   return points;
 }
 
@@ -177,7 +225,7 @@ export default function TwoDPage() {
         // updates will generate new points around the default center
         randomTimerRef.current = window.setInterval(() => {
           try {
-            const pts = generateRandomHeatmap(defaultLng, defaultLat, 40, 0.02);
+            const pts = generateRainfallHeatmap(defaultLng, defaultLat, 60, 1, 3, 140);
             heatmapRef.current?.setDataSet({ data: pts, max: 120 });
           } catch (e) {
             // ignore individual update failures
