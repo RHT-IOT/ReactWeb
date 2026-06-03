@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "react-oidc-context";
 
 type HeatPoint = {
   lng: number;
@@ -187,11 +188,64 @@ function generateRainfallHeatmap(
   return points;
 }
 
+/**
+ * Convert an n x m numeric matrix into heatmap points.
+ * - `matrix` is an array of rows, each row is an array of numbers (concentration).
+ * - `topLeftLat/long` is the latitude/longitude of the matrix's top-left cell (center of that cell).
+ * - `resolutionMeters` is the distance between adjacent matrix cells in meters.
+ *
+ * The function returns an array of `HeatPoint` suitable for the Baidu heatmap (lng, lat, count).
+ */
+function convertMatrixToHeatPoints(
+  matrix: number[][],
+  topLeftLat: number,
+  topLeftLng: number,
+  resolutionMeters: number,
+  ignoreBelow = 0
+): HeatPoint[] {
+  const points: HeatPoint[] = [];
+  if (!Array.isArray(matrix) || matrix.length === 0) return points;
+
+  // Approx conversions (sufficient for <10km areas)
+  const latDegPerMeter = 1 / 111000; // ~111 km per degree
+  // Use top-left latitude for longitude scaling (small-area approximation)
+  const topLeftLatRad = (topLeftLat * Math.PI) / 180;
+  const lngDegPerMeter = 1 / (111320 * Math.cos(topLeftLatRad));
+
+  for (let r = 0; r < matrix.length; r++) {
+    const row = matrix[r];
+    if (!Array.isArray(row)) continue;
+    for (let c = 0; c < row.length; c++) {
+      const val = Number(row[c]) || 0;
+      if (val <= ignoreBelow) continue;
+
+      // row increases downward (south), column increases rightward (east)
+      const lat = topLeftLat - r * resolutionMeters * latDegPerMeter;
+      const lng = topLeftLng + c * resolutionMeters * lngDegPerMeter;
+
+      points.push({ lng, lat, count: val });
+    }
+  }
+
+  return points;
+}
+
+// Example usage (uncomment to test in dev):
+// const exampleMatrix = [[10,20],[5,0]];
+// const pts = convertMatrixToHeatPoints(exampleMatrix, 22.73925, 113.50978, 100);
+// console.log('converted points', pts);
+
 export default function TwoDPage() {
+  const auth = useAuth();
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
   const heatmapRef = useRef<any>(null);
   const randomTimerRef = useRef<number | null>(null);
   const [error, setError] = useState<string>("");
+  const [topLeftLat, setTopLeftLat] = useState<number>(22.74225);
+  const [topLeftLng, setTopLeftLng] = useState<number>(113.50478);
+  const [resolutionMeters, setResolutionMeters] = useState<number>(30);
+  const [loadingMatrix, setLoadingMatrix] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +262,7 @@ export default function TwoDPage() {
         const defaultLat = 22.73725;
         const defaultLng = 113.50978;
         const center = new window.BMap.Point(defaultLng, defaultLat);
+        mapRef.current = map;
         map.centerAndZoom(center, 14);
         map.enableScrollWheelZoom(true);
 
@@ -252,6 +307,46 @@ export default function TwoDPage() {
     };
   }, []);
 
+  async function loadOdorMapFromApi() {
+    if (!heatmapRef.current || !mapRef.current) return;
+    setLoadingMatrix(true);
+    try {
+      const token = auth?.user?.access_token ?? auth?.user?.id_token ?? "";
+      if (!token) throw new Error("Not authenticated");
+
+      const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/odor_map", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const json = await res.json();
+      const body = JSON.parse(json?.body ?? "{}");
+      const rows = Number(body.rows || body.n || 0);
+      const cols = Number(body.cols || body.m || 0);
+      const matrix = Array.isArray(body.rainfall_matrix) ? (body.rainfall_matrix as number[][]) : [];
+
+      const points = convertMatrixToHeatPoints(matrix, topLeftLat, topLeftLng, resolutionMeters, 0);
+      heatmapRef.current.setDataSet({ data: points, max: Math.max(...points.map((p: any) => p.count), 100) });
+
+      if (rows > 0 && cols > 0) {
+        const latDegPerMeter = 1 / 111000;
+        const topLeftLatRad = (topLeftLat * Math.PI) / 180;
+        const lngDegPerMeter = 1 / (111320 * Math.cos(topLeftLatRad));
+
+        const centerLat = topLeftLat - ((rows - 1) / 2) * resolutionMeters * latDegPerMeter;
+        const centerLng = topLeftLng + ((cols - 1) / 2) * resolutionMeters * lngDegPerMeter;
+        try {
+          mapRef.current.centerAndZoom(new window.BMap.Point(centerLng, centerLat), 14);
+        } catch {}
+      }
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setLoadingMatrix(false);
+    }
+  }
+
   return (
     <main style={{ padding: "16px" }}>
       <h1 style={{ margin: "0 0 12px" }}>2D Baidu Heatmap Demo</h1>
@@ -259,6 +354,41 @@ export default function TwoDPage() {
         Set NEXT_PUBLIC_BAIDU_MAP_AK in your environment, then this page will render a Baidu map with
         heatmap overlay.
       </p>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+        <label style={{ fontSize: 12, color: "#333" }}>
+          Top-left Lat:
+          <input
+            type="number"
+            step="0.000001"
+            value={topLeftLat}
+            onChange={(e) => setTopLeftLat(Number(e.target.value))}
+            style={{ marginLeft: 6, width: 120 }}
+          />
+        </label>
+        <label style={{ fontSize: 12, color: "#333" }}>
+          Top-left Lng:
+          <input
+            type="number"
+            step="0.000001"
+            value={topLeftLng}
+            onChange={(e) => setTopLeftLng(Number(e.target.value))}
+            style={{ marginLeft: 6, width: 120 }}
+          />
+        </label>
+        <label style={{ fontSize: 12, color: "#333" }}>
+          Resolution (m):
+          <input
+            type="number"
+            step="1"
+            value={resolutionMeters}
+            onChange={(e) => setResolutionMeters(Number(e.target.value))}
+            style={{ marginLeft: 6, width: 80 }}
+          />
+        </label>
+        <button onClick={() => void loadOdorMapFromApi()} disabled={loadingMatrix} style={{ padding: "6px 10px" }}>
+          {loadingMatrix ? "Loading..." : "Fetch & Render"}
+        </button>
+      </div>
       {error ? (
         <p style={{ color: "crimson", marginBottom: "12px" }}>{error}</p>
       ) : null}
