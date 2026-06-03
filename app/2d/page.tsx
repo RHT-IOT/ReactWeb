@@ -238,14 +238,13 @@ function convertMatrixToHeatPoints(
 export default function TwoDPage() {
   const auth = useAuth();
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<any>(null);
   const heatmapRef = useRef<any>(null);
   const randomTimerRef = useRef<number | null>(null);
   const [error, setError] = useState<string>("");
   const [topLeftLat, setTopLeftLat] = useState<number>(22.74225);
   const [topLeftLng, setTopLeftLng] = useState<number>(113.50478);
-  const [resolutionMeters, setResolutionMeters] = useState<number>(30);
-  const [loadingMatrix, setLoadingMatrix] = useState(false);
+  const [resolutionMeters, setResolutionMeters] = useState<number>(100);
+  const [ignoreBelow, setIgnoreBelow] = useState<number>(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -262,7 +261,6 @@ export default function TwoDPage() {
         const defaultLat = 22.73725;
         const defaultLng = 113.50978;
         const center = new window.BMap.Point(defaultLng, defaultLat);
-        mapRef.current = map;
         map.centerAndZoom(center, 14);
         map.enableScrollWheelZoom(true);
 
@@ -307,43 +305,66 @@ export default function TwoDPage() {
     };
   }, []);
 
-  async function loadOdorMapFromApi() {
-    if (!heatmapRef.current || !mapRef.current) return;
-    setLoadingMatrix(true);
+  // helper to silently refresh token if available
+  async function getIdTokenAsync(): Promise<string> {
     try {
-      const token = auth?.user?.access_token ?? auth?.user?.id_token ?? "";
-      if (!token) throw new Error("Not authenticated");
-
-      const res = await fetch("https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/odor_map", {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`API error ${res.status}`);
-      const json = await res.json();
-      const body = JSON.parse(json?.body ?? "{}");
-      const rows = Number(body.rows || body.n || 0);
-      const cols = Number(body.cols || body.m || 0);
-      const matrix = Array.isArray(body.rainfall_matrix) ? (body.rainfall_matrix as number[][]) : [];
-
-      const points = convertMatrixToHeatPoints(matrix, topLeftLat, topLeftLng, resolutionMeters, 0);
-      heatmapRef.current.setDataSet({ data: points, max: Math.max(...points.map((p: any) => p.count), 100) });
-
-      if (rows > 0 && cols > 0) {
-        const latDegPerMeter = 1 / 111000;
-        const topLeftLatRad = (topLeftLat * Math.PI) / 180;
-        const lngDegPerMeter = 1 / (111320 * Math.cos(topLeftLatRad));
-
-        const centerLat = topLeftLat - ((rows - 1) / 2) * resolutionMeters * latDegPerMeter;
-        const centerLng = topLeftLng + ((cols - 1) / 2) * resolutionMeters * lngDegPerMeter;
-        try {
-          mapRef.current.centerAndZoom(new window.BMap.Point(centerLng, centerLat), 14);
-        } catch {}
+      const fn: any = (auth as any)?.signinSilent;
+      if (typeof fn === "function") {
+        const user = await fn();
+        const tk = (user as any)?.id_token;
+        if (tk) return tk;
       }
+    } catch {}
+    return auth?.user?.id_token || "";
+  }
+
+  async function fetchOdorMapAndRender() {
+    if (!heatmapRef.current) return;
+    const url = "https://6ts7sjoaw6.execute-api.ap-southeast-2.amazonaws.com/test/odor_map";
+    const make = async (tk: string) =>
+      fetch(url, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` } });
+
+    try {
+      const idToken = auth?.user?.id_token || "";
+      let res = await make(idToken);
+      if ((res.status === 401 || res.status === 403) && typeof getIdTokenAsync === "function") {
+        const newTk = await getIdTokenAsync();
+        if (newTk) res = await make(newTk);
+      }
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`Request failed ${res.status} ${txt}`);
+      }
+      const json = await res.json();
+      // backend returns { body: "{...}" }
+      let bodyObj: any = json;
+      if (json && typeof json.body === "string") {
+        try {
+          bodyObj = JSON.parse(json.body);
+        } catch {
+          bodyObj = json.body;
+        }
+      }
+      const matrix = Array.isArray(bodyObj?.rainfall_matrix) ? bodyObj.rainfall_matrix : [];
+      if (!matrix || matrix.length === 0) {
+        throw new Error("No rainfall_matrix found in response");
+      }
+
+      // convert and render
+      const points = convertMatrixToHeatPoints(matrix as number[][], Number(topLeftLat), Number(topLeftLng), Number(resolutionMeters), Number(ignoreBelow));
+      // compute a sensible max from matrix values
+      let maxVal = 0;
+      for (const row of matrix) {
+        for (const v of row) if (typeof v === "number" && v > maxVal) maxVal = v;
+      }
+      if (randomTimerRef.current) {
+        window.clearInterval(randomTimerRef.current as unknown as number);
+        randomTimerRef.current = null;
+      }
+      heatmapRef.current?.setDataSet({ data: points, max: Math.max(1, Math.round(maxVal)) });
+      heatmapRef.current?.show();
     } catch (e: any) {
       setError(e?.message ?? String(e));
-    } finally {
-      setLoadingMatrix(false);
     }
   }
 
@@ -354,39 +375,25 @@ export default function TwoDPage() {
         Set NEXT_PUBLIC_BAIDU_MAP_AK in your environment, then this page will render a Baidu map with
         heatmap overlay.
       </p>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
-        <label style={{ fontSize: 12, color: "#333" }}>
+      <div style={{ margin: "0 0 12px", display: "flex", gap: 8, alignItems: "center" }}>
+        <label style={{ fontSize: 13 }}>
           Top-left Lat:
-          <input
-            type="number"
-            step="0.000001"
-            value={topLeftLat}
-            onChange={(e) => setTopLeftLat(Number(e.target.value))}
-            style={{ marginLeft: 6, width: 120 }}
-          />
+          <input style={{ marginLeft: 6, width: 120 }} value={topLeftLat} onChange={e => setTopLeftLat(Number(e.target.value))} />
         </label>
-        <label style={{ fontSize: 12, color: "#333" }}>
+        <label style={{ fontSize: 13 }}>
           Top-left Lng:
-          <input
-            type="number"
-            step="0.000001"
-            value={topLeftLng}
-            onChange={(e) => setTopLeftLng(Number(e.target.value))}
-            style={{ marginLeft: 6, width: 120 }}
-          />
+          <input style={{ marginLeft: 6, width: 120 }} value={topLeftLng} onChange={e => setTopLeftLng(Number(e.target.value))} />
         </label>
-        <label style={{ fontSize: 12, color: "#333" }}>
+        <label style={{ fontSize: 13 }}>
           Resolution (m):
-          <input
-            type="number"
-            step="1"
-            value={resolutionMeters}
-            onChange={(e) => setResolutionMeters(Number(e.target.value))}
-            style={{ marginLeft: 6, width: 80 }}
-          />
+          <input style={{ marginLeft: 6, width: 80 }} value={resolutionMeters} onChange={e => setResolutionMeters(Number(e.target.value))} />
         </label>
-        <button onClick={() => void loadOdorMapFromApi()} disabled={loadingMatrix} style={{ padding: "6px 10px" }}>
-          {loadingMatrix ? "Loading..." : "Fetch & Render"}
+        <label style={{ fontSize: 13 }}>
+          Ignore ≤
+          <input style={{ marginLeft: 6, width: 60 }} value={ignoreBelow} onChange={e => setIgnoreBelow(Number(e.target.value))} />
+        </label>
+        <button className="brand-button" style={{ marginLeft: 8 }} onClick={() => void fetchOdorMapAndRender()}>
+          Fetch & Render Odor Map
         </button>
       </div>
       {error ? (
