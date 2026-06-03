@@ -109,7 +109,8 @@ function getDemoHeatmapData(): HeatPoint[] {
 async function fetchHeatmapData(): Promise<HeatPoint[]> {
   // TODO: Replace this with your real endpoint when ready.
   if (!HEATMAP_API_ENDPOINT) {
-    return getDemoHeatmapData();
+    // default to generating around the provided center (Guangzhou coordinates)
+    return generateRandomHeatmap(113.50978, 22.73725, 30, 0.02);
   }
 
   const response = await fetch(HEATMAP_API_ENDPOINT, {
@@ -125,8 +126,23 @@ async function fetchHeatmapData(): Promise<HeatPoint[]> {
   return data;
 }
 
+function generateRandomHeatmap(centerLng: number, centerLat: number, num = 30, spread = 0.02): HeatPoint[] {
+  const points: HeatPoint[] = [];
+  for (let i = 0; i < num; i++) {
+    // random offset within +/- spread
+    const lng = centerLng + (Math.random() - 0.5) * spread * 2;
+    const lat = centerLat + (Math.random() - 0.5) * spread * 2;
+    // concentration between 5 and 100 (skewed)
+    const count = Math.floor(5 + Math.pow(Math.random(), 1.5) * 95);
+    points.push({ lng, lat, count });
+  }
+  return points;
+}
+
 export default function TwoDPage() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const heatmapRef = useRef<any>(null);
+  const randomTimerRef = useRef<number | null>(null);
   const [error, setError] = useState<string>("");
 
   useEffect(() => {
@@ -139,18 +155,34 @@ export default function TwoDPage() {
         if (cancelled || !mapContainerRef.current || !window.BMap || !window.BMapLib) {
           return;
         }
-
         const map = new window.BMap.Map(mapContainerRef.current);
-        const center = new window.BMap.Point(116.418261, 39.921984);
+        // Default display point around 22.73725 (lat) / 113.50978 (lng)
+        const defaultLat = 22.73725;
+        const defaultLng = 113.50978;
+        const center = new window.BMap.Point(defaultLng, defaultLat);
         map.centerAndZoom(center, 14);
         map.enableScrollWheelZoom(true);
 
-        const points = await fetchHeatmapData();
-
+        // create heatmap overlay and store for later updates
         const heatmapOverlay = new window.BMapLib.HeatmapOverlay({ radius: 20 });
         map.addOverlay(heatmapOverlay);
-        heatmapOverlay.setDataSet({ data: points, max: 100 });
+        heatmapRef.current = heatmapOverlay;
+
+        // initial dataset (from API or generated near default)
+        const initialPoints = await fetchHeatmapData();
+        heatmapOverlay.setDataSet({ data: initialPoints, max: 100 });
         heatmapOverlay.show();
+
+        // start random updates to demonstrate dynamic heatmap
+        // updates will generate new points around the default center
+        randomTimerRef.current = window.setInterval(() => {
+          try {
+            const pts = generateRandomHeatmap(defaultLng, defaultLat, 40, 0.02);
+            heatmapRef.current?.setDataSet({ data: pts, max: 120 });
+          } catch (e) {
+            // ignore individual update failures
+          }
+        }, 2000) as unknown as number;
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to initialize Baidu map";
         setError(message);
@@ -161,6 +193,14 @@ export default function TwoDPage() {
 
     return () => {
       cancelled = true;
+      if (randomTimerRef.current) {
+        window.clearInterval(randomTimerRef.current as unknown as number);
+        randomTimerRef.current = null;
+      }
+      // hide heatmap if present
+      try {
+        if (heatmapRef.current && heatmapRef.current.hide) heatmapRef.current.hide();
+      } catch {}
     };
   }, []);
 
