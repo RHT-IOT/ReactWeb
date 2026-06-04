@@ -29,6 +29,8 @@ jobs:
       - name: Create env file
         run: |
           echo "NEXT_PUBLIC_BAIDU_MAP_AK=${{ secrets.NEXT_PUBLIC_BAIDU_MAP_AK }}" > .env.production
+          echo "NEXT_PUBLIC_TIANDITU_KEY=${{ secrets.NEXT_PUBLIC_TIANDITU_KEY }}" >> .env.production
+          
       - name: Install dependencies
         run: npm install
 
