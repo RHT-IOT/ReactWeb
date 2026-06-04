@@ -19,7 +19,7 @@ declare global {
 
 const BAIDU_AK = process.env.NEXT_PUBLIC_BAIDU_MAP_AK ?? "";
 // const BAIDU_AK = process.env.NEXT_PUBLIC_BAIDU_AK ?? "";
-const TIANDITU_KEY = process.env.NEXT_PUBLIC_BAIDU_AK ?? "";
+const TIANDITU_KEY = process.env.NEXT_PUBLIC_TIANDITU_KEY ?? "";
 const HEATMAP_API_ENDPOINT = "";
 
 async function loadScript(src: string, forceSync = false): Promise<void> {
