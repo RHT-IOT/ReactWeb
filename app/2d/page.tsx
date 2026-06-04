@@ -13,10 +13,12 @@ declare global {
   interface Window {
     BMap?: any;
     BMapLib?: any;
+    L?: any;
   }
 }
 
 const BAIDU_AK = process.env.NEXT_PUBLIC_BAIDU_MAP_AK ?? "";
+const TIANDITU_KEY = process.env.NEXT_PUBLIC_TIANDITU_KEY ?? "";
 const HEATMAP_API_ENDPOINT = "";
 
 async function loadScript(src: string, forceSync = false): Promise<void> {
@@ -89,6 +91,22 @@ async function ensureBaiduMapLoaded(ak: string): Promise<void> {
 
   await loadBaiduCoreScript(ak);
   await loadScript("https://api.map.baidu.com/library/Heatmap/2.0/src/Heatmap_min.js", true);
+}
+
+async function loadCss(href: string) {
+  if (document.querySelector(`link[href="${href}"]`)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = href;
+  document.head.appendChild(link);
+}
+
+async function ensureTiandituLoaded(tk: string): Promise<void> {
+  // Load Leaflet and the heat plugin; tiles use Tianditu WMTS when `tk` is provided
+  if (window.L) return;
+  await loadCss("https://unpkg.com/leaflet@1.9.3/dist/leaflet.css");
+  await loadScript("https://unpkg.com/leaflet@1.9.3/dist/leaflet.js");
+  await loadScript("https://unpkg.com/leaflet.heat/dist/leaflet-heat.js");
 }
 
 function getDemoHeatmapData(): HeatPoint[] {
@@ -194,7 +212,7 @@ function generateRainfallHeatmap(
  * - `topLeftLat/long` is the latitude/longitude of the matrix's top-left cell (center of that cell).
  * - `resolutionMeters` is the distance between adjacent matrix cells in meters.
  *
- * The function returns an array of `HeatPoint` suitable for the Baidu heatmap (lng, lat, count).
+ * The function returns an array of `HeatPoint` suitable for a map heatmap overlay (lng, lat, count).
  */
 function convertMatrixToHeatPoints(
   matrix: number[][],
@@ -251,41 +269,50 @@ export default function TwoDPage() {
 
     const init = async () => {
       try {
-        await ensureBaiduMapLoaded(BAIDU_AK);
+        await ensureTiandituLoaded(TIANDITU_KEY);
 
-        if (cancelled || !mapContainerRef.current || !window.BMap || !window.BMapLib) {
-          return;
-        }
-        const map = new window.BMap.Map(mapContainerRef.current);
+        if (cancelled || !mapContainerRef.current || !window.L) return;
+
+        const L = window.L;
         // Default display point around 22.73725 (lat) / 113.50978 (lng)
         const defaultLat = 22.73725;
         const defaultLng = 113.50978;
-        const center = new window.BMap.Point(defaultLng, defaultLat);
-        map.centerAndZoom(center, 14);
-        map.enableScrollWheelZoom(true);
 
-        // create heatmap overlay and store for later updates
-        const heatmapOverlay = new window.BMapLib.HeatmapOverlay({ radius: 20 });
-        map.addOverlay(heatmapOverlay);
-        heatmapRef.current = heatmapOverlay;
+        const map = L.map(mapContainerRef.current).setView([defaultLat, defaultLng], 14);
+        map.scrollWheelZoom.enable();
+
+        const tileUrl = TIANDITU_KEY
+          ? `https://t{s}.tianditu.gov.cn/vec_w/wmts?service=wmts&request=GetTile&version=1.0.0&layer=vec&style=default&tilematrixset=w&TileMatrix={z}&TileRow={y}&TileCol={x}&tk=${encodeURIComponent(
+              TIANDITU_KEY
+            )}`
+          : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+        const tileOptions: any = TIANDITU_KEY
+          ? { subdomains: "01234567", attribution: "Tianditu" }
+          : { subdomains: "abc", attribution: "© OpenStreetMap contributors" };
+
+        L.tileLayer(tileUrl, tileOptions).addTo(map);
 
         // initial dataset (from API or generated near default)
         const initialPoints = await fetchHeatmapData();
-        heatmapOverlay.setDataSet({ data: initialPoints, max: 100 });
-        heatmapOverlay.show();
+        const initialLatLngs = initialPoints.map(p => [p.lat, p.lng, p.count]);
+        const maxInitial = Math.max(1, ...initialPoints.map(p => p.count));
+
+        const heat = L.heatLayer(initialLatLngs, { radius: 20, blur: 15, maxZoom: 17 }).addTo(map);
+        heatmapRef.current = { layer: heat, map };
 
         // start random updates to demonstrate dynamic heatmap
-        // updates will generate new points around the default center
         randomTimerRef.current = window.setInterval(() => {
           try {
             const pts = generateRainfallHeatmap(defaultLng, defaultLat, 60, 1, 3, 140);
-            heatmapRef.current?.setDataSet({ data: pts, max: 120 });
+            const latlngs = pts.map(p => [p.lat, p.lng, p.count]);
+            (heatmapRef.current?.layer as any)?.setLatLngs(latlngs);
           } catch (e) {
-            // ignore individual update failures
+            // ignore
           }
         }, 2000) as unknown as number;
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to initialize Baidu map";
+        const message = err instanceof Error ? err.message : "Failed to initialize map";
         setError(message);
       }
     };
@@ -298,9 +325,11 @@ export default function TwoDPage() {
         window.clearInterval(randomTimerRef.current as unknown as number);
         randomTimerRef.current = null;
       }
-      // hide heatmap if present
+      // remove map and layers if present
       try {
-        if (heatmapRef.current && heatmapRef.current.hide) heatmapRef.current.hide();
+        if (heatmapRef.current?.map) {
+          heatmapRef.current.map.remove();
+        }
       } catch {}
     };
   }, []);
@@ -361,8 +390,10 @@ export default function TwoDPage() {
         window.clearInterval(randomTimerRef.current as unknown as number);
         randomTimerRef.current = null;
       }
-      heatmapRef.current?.setDataSet({ data: points, max: Math.max(1, Math.round(maxVal)) });
-      heatmapRef.current?.show();
+      const latlngs = points.map(p => [p.lat, p.lng, p.count]);
+      try {
+        (heatmapRef.current?.layer as any)?.setLatLngs(latlngs);
+      } catch {}
     } catch (e: any) {
       setError(e?.message ?? String(e));
     }
@@ -370,10 +401,9 @@ export default function TwoDPage() {
 
   return (
     <main style={{ padding: "16px" }}>
-      <h1 style={{ margin: "0 0 12px" }}>2D Baidu Heatmap Demo</h1>
+      <h1 style={{ margin: "0 0 12px" }}>2D Tianditu Heatmap Demo</h1>
       <p style={{ margin: "0 0 12px", color: "#666" }}>
-        Set NEXT_PUBLIC_BAIDU_MAP_AK in your environment, then this page will render a Baidu map with
-        heatmap overlay.
+        Set NEXT_PUBLIC_TIANDITU_KEY in your environment to use Tianditu tiles (or leave empty to use OpenStreetMap). The page will render a map with a heatmap overlay.
       </p>
       <div style={{ margin: "0 0 12px", display: "flex", gap: 8, alignItems: "center" }}>
         <label style={{ fontSize: 13 }}>
