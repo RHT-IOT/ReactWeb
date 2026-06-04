@@ -18,7 +18,8 @@ declare global {
 }
 
 const BAIDU_AK = process.env.NEXT_PUBLIC_BAIDU_MAP_AK ?? "";
-const TIANDITU_KEY = process.env.NEXT_PUBLIC_TIANDITU_KEY ?? "";
+// const BAIDU_AK = process.env.NEXT_PUBLIC_BAIDU_AK ?? "";
+const TIANDITU_KEY = process.env.NEXT_PUBLIC_BAIDU_AK ?? "";
 const HEATMAP_API_ENDPOINT = "";
 
 async function loadScript(src: string, forceSync = false): Promise<void> {
@@ -281,15 +282,16 @@ export default function TwoDPage() {
         const map = L.map(mapContainerRef.current).setView([defaultLat, defaultLng], 14);
         map.scrollWheelZoom.enable();
 
-        const tileUrl = TIANDITU_KEY
-          ? `https://t{s}.tianditu.gov.cn/vec_w/wmts?service=wmts&request=GetTile&version=1.0.0&layer=vec&style=default&tilematrixset=w&TileMatrix={z}&TileRow={y}&TileCol={x}&tk=${encodeURIComponent(
-              TIANDITU_KEY
-            )}`
-          : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+        if (!TIANDITU_KEY) {
+          setError("Missing NEXT_PUBLIC_TIANDITU_KEY — set your Tianditu key to use Tianditu tiles");
+          return;
+        }
 
-        const tileOptions: any = TIANDITU_KEY
-          ? { subdomains: "01234567", attribution: "Tianditu" }
-          : { subdomains: "abc", attribution: "© OpenStreetMap contributors" };
+        const tileUrl = `https://t{s}.tianditu.gov.cn/vec_w/wmts?service=wmts&request=GetTile&version=1.0.0&layer=vec&style=default&tilematrixset=w&TileMatrix={z}&TileRow={y}&TileCol={x}&tk=${encodeURIComponent(
+          TIANDITU_KEY
+        )}`;
+
+        const tileOptions: any = { subdomains: "01234567", attribution: "© 天地图", maxZoom: 18, tileSize: 256 };
 
         L.tileLayer(tileUrl, tileOptions).addTo(map);
 
@@ -403,7 +405,7 @@ export default function TwoDPage() {
     <main style={{ padding: "16px" }}>
       <h1 style={{ margin: "0 0 12px" }}>2D Tianditu Heatmap Demo</h1>
       <p style={{ margin: "0 0 12px", color: "#666" }}>
-        Set NEXT_PUBLIC_TIANDITU_KEY in your environment to use Tianditu tiles (or leave empty to use OpenStreetMap). The page will render a map with a heatmap overlay.
+        This page requires `NEXT_PUBLIC_TIANDITU_KEY` in your environment to use Tianditu WMTS tiles (web-mercator `vec_w`). Set the env var and restart the dev server.
       </p>
       <div style={{ margin: "0 0 12px", display: "flex", gap: 8, alignItems: "center" }}>
         <label style={{ fontSize: 13 }}>
